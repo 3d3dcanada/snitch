@@ -3,7 +3,7 @@
 WHY THIS IS WORTH DOING AT ALL. LinkedIn scans every uploaded image for a C2PA manifest and, when
 it finds one, shows a "CR" badge on the image that opens a panel naming the creator and the tool.
 As of 2026 it is the only major network that DISPLAYS inbound credentials rather than only reading
-them to decide whether to apply an AI label. IPTC and XMP, which `imprint imprint` writes, are
+them to decide whether to apply an AI label. IPTC and XMP, which `credit` writes, are
 stripped by LinkedIn on upload. This is not.
 
 THE HONEST LIMIT, STATED HERE AND IN THE OUTPUT. A certificate this tool generates for you is
@@ -21,7 +21,7 @@ import subprocess
 
 from .core import LICENCES, _run
 
-KEYDIR = os.path.expanduser("~/.config/imprint")
+KEYDIR = os.path.expanduser("~/.config/snitch")
 DEFAULT_KEY = os.path.join(KEYDIR, "key.pem")
 DEFAULT_CERT = os.path.join(KEYDIR, "cert.pem")
 
@@ -35,7 +35,7 @@ def c2patool():
                 if os.path.exists(os.path.expanduser("~/.cargo/bin/c2patool")) else None))
 
 
-def ensure_cert(key=DEFAULT_KEY, cert=DEFAULT_CERT, org="imprint"):
+def ensure_cert(key=DEFAULT_KEY, cert=DEFAULT_CERT, org="snitch"):
     """A P-256 signing certificate, made once.
 
     C2PA requires ES256 over prime256v1 for this algorithm, keyUsage digitalSignature and an
@@ -84,7 +84,7 @@ def manifest(*, title, description=None, creator=None, org=None, url=None, conta
         work["usageInfo"] = name
 
     return {
-        "claim_generator_info": [{"name": org or "imprint", "version": "1.0"}],
+        "claim_generator_info": [{"name": org or "snitch", "version": "1.0"}],
         "title": title,
         "assertions": [
             {"label": "stds.schema-org.CreativeWork", "data": work},
@@ -127,7 +127,7 @@ def run(a):
 
     key = a.key or DEFAULT_KEY
     cert = a.cert or DEFAULT_CERT
-    made = ensure_cert(key, cert, a.org or "imprint")
+    made = ensure_cert(key, cert, a.org or "snitch")
     if made:
         print(f"  generated a signing certificate at {cert}")
         print(f"  private key {key} (chmod 600, keep it)")

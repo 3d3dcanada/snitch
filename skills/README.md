@@ -1,17 +1,17 @@
 # Skills
 
-Drop-in agent skills for `imprint`.
+Drop-in agent skills for `snitch`, `no-comment` and `credit`.
 
 ## Claude Code
 
-    cp -r claude-code/imprint ~/.claude/skills/
+    cp -r claude-code/snitch ~/.claude/skills/
 
 Then it triggers on its own whenever a task involves image metadata, photo credit, GPS in photos,
 C2PA, or preparing pictures for upload.
 
 ## Kilo Code
 
-    cp kilo-code/imprint.md ~/.config/kilo/agents/
+    cp kilo-code/snitch.md ~/.config/kilo/agents/
 
 ## Anything else
 

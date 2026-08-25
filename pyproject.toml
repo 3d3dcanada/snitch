@@ -3,9 +3,9 @@ requires = ["setuptools>=68"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "imprint-cli"
+name = "snitch-tools"
 version = "0.1.0"
-description = "Put your name on your work, and find out what a platform will remove."
+description = "snitch, no-comment and credit: find out what your image is telling people, make it stop, or put your name on it."
 readme = "README.md"
 requires-python = ">=3.9"
 license = { text = "MIT" }
@@ -24,10 +24,12 @@ dependencies = ["Pillow>=9.0"]
 
 [project.urls]
 Homepage = "https://3d3d.ca"
-Source = "https://github.com/3d3dcanada/imprint"
+Source = "https://github.com/3d3dcanada/snitch"
 
 [project.scripts]
-imprint = "imprint.cli:main"
+snitch = "snitch.cli:snitch_main"
+no-comment = "snitch.cli:nocomment_main"
+credit = "snitch.cli:credit_main"
 
 [tool.setuptools.packages.find]
-include = ["imprint*"]
+include = ["snitch*"]

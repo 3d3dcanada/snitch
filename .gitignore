@@ -4,6 +4,6 @@ build/
 dist/
 *.egg-info/
 .venv/
-*-imprint.jpg
+*-credited.jpg
 *-stamped.jpg
 *-clean.jpg

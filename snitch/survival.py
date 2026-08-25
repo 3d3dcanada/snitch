@@ -5,7 +5,7 @@ half of it a platform is about to throw away is the part nobody tells you, and i
 difference between "I added my copyright" and "my copyright is still there".
 
 Last verified 2026-08-25. Re-verify before trusting it: platforms change this quietly and
-without announcement. `imprint platforms --check` prints how to test any of them yourself in
+without announcement. `snitch --platforms --check` prints how to test any of them yourself in
 about two minutes.
 """
 
@@ -94,10 +94,10 @@ def one_line_advice():
 def how_to_verify():
     return """Verify any row yourself in about two minutes:
 
-  1. imprint imprint photo.jpg --creator "Your Name" --credit "Your Studio"
+  1. credit photo.jpg --creator "Your Name" --credit "Your Studio"
   2. Upload it to the platform.
   3. Download the image back off the platform, at full size.
-  4. imprint inspect downloaded.jpg
+  4. snitch downloaded.jpg
 
 Whatever is missing in step 4 is what that platform strips. Please open an issue if a row
 here is wrong: this table is only useful if it is true."""

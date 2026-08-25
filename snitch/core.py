@@ -2,9 +2,9 @@
 
 Three separate jobs that people usually conflate:
 
-    inspect   read everything and say plainly what is there
-    imprint   write credit in, and optionally stamp it into the pixels
-    strip     take metadata out
+    snitch      read everything and say plainly what is there
+    credit      write credit in, and optionally stamp it into the pixels
+    no-comment  take metadata out
 
 STRIPPING IS SEGMENT SURGERY, NOT RE-ENCODING. Dropping JPEG APPn/COM markers and keeping only
 the required PNG chunks leaves the decoded pixels byte-identical. Re-encoding to "clear" metadata
@@ -237,7 +237,7 @@ def pixels_identical(a, b):
 
 
 # --------------------------------------------------------------------------------------------
-# imprint: write credit
+# credit: write credit
 # --------------------------------------------------------------------------------------------
 
 def write_credit(path, *, creator=None, credit=None, copyright_=None, terms=None,
