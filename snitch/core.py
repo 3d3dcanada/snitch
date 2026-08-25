@@ -57,6 +57,7 @@ def require(tool, why):
 
 def read_metadata(path):
     """Everything exiftool can see, as a dict."""
+    path = os.path.abspath(os.fspath(path))
     if not os.path.isfile(path):
         raise ValueError("not a regular file")
     require("exiftool", "reading metadata needs it")
@@ -99,6 +100,7 @@ def resolve_c2patool(tool=None):
 
 def read_c2pa_report(path, c2patool=None):
     """Return (status, manifest, error) without conflating no tool, no claim, and failure."""
+    path = os.path.abspath(os.fspath(path))
     tool = resolve_c2patool(c2patool)
     if not tool:
         return "unavailable", None, "c2patool is not installed"
@@ -400,6 +402,7 @@ def write_credit(path, *, creator=None, credit=None, copyright_=None, terms=None
                  rights_url=None, licensor=None, licensor_url=None, contact=None,
                  title=None, description=None, keywords=None, drop_gps=True):
     """Write the IPTC Core / XMP fields that picture desks and Google actually read."""
+    path = os.path.abspath(os.fspath(path))
     require("exiftool", "writing metadata needs it")
     a = ["exiftool", "-overwrite_original", "-q", "-P"]
 

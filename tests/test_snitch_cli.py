@@ -47,6 +47,14 @@ def test_human_output_quotes_paths_for_copy_and_paste(tmp_path, capsys):
     assert "\x1b[" not in output
 
 
+def test_leading_dash_filename_is_not_passed_to_exiftool_as_an_option(tmp_path, monkeypatch):
+    source = tmp_path / "-dash.jpg"
+    make_jpeg(source)
+    monkeypatch.chdir(tmp_path)
+
+    assert cli.snitch_main(["--", "-dash.jpg"]) == 0
+
+
 def test_json_output_is_stable_unicode_and_reports_errors(tmp_path, capsys):
     valid = tmp_path / "photo José.jpg"
     missing = tmp_path / "missing.jpg"
