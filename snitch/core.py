@@ -14,16 +14,22 @@ STAMPING DOES re-encode, because it has to: it changes pixels. That is stated at
 and in the CLI output, because a user deserves to know which operation costs them quality.
 """
 
-import io
+import hashlib
 import json
 import os
 import shutil
 import struct
 import subprocess
+import zlib
 
-# JPEG markers that never carry image data. FFD8 start, FFD9 end, FFDA is the scan.
-_JPEG_SKIPPABLE = set(range(0xE0, 0xF0)) | {0xFE}          # APP0..APP15 and COM
-_PNG_REQUIRED = {b"IHDR", b"PLTE", b"IDAT", b"IEND", b"tRNS", b"gAMA", b"cHRM", b"sRGB"}
+# JPEG application markers usually carry metadata, but three are required for faithful interchange:
+# JFIF/JFXX identifies a JFIF stream, ICC_PROFILE controls colour, and Adobe APP14 describes the
+# colour transform used by many CMYK JPEGs. EXIF is replaced with an orientation-only segment below.
+_JPEG_METADATA = set(range(0xE0, 0xF0)) | {0xFE}          # APP0..APP15 and COM
+_PNG_DISPLAY_CHUNKS = {
+    b"PLTE", b"tRNS", b"gAMA", b"cHRM", b"sRGB", b"iCCP", b"cICP", b"mDCv", b"cLLi",
+    b"sBIT", b"pHYs", b"bKGD", b"acTL", b"fcTL", b"fdAT",
+}
 
 
 class ToolMissing(RuntimeError):
@@ -31,7 +37,7 @@ class ToolMissing(RuntimeError):
 
 
 def _run(cmd, **kw):
-    return subprocess.run(cmd, capture_output=True, text=True, **kw)
+    return subprocess.run(cmd, capture_output=True, text=True, check=False, **kw)
 
 
 def have(tool):
@@ -40,9 +46,13 @@ def have(tool):
 
 def require(tool, why):
     if not have(tool):
-        raise ToolMissing(f"{tool} is not installed, and {why}.\n"
-                          f"  Debian/Ubuntu:  sudo apt install {tool}\n"
-                          f"  macOS:          brew install {tool}")
+        debian_package = "libimage-exiftool-perl" if tool == "exiftool" else tool
+        raise ToolMissing(
+            f"{tool} is not installed, and {why}.\n"
+            f"  Debian/Ubuntu:  sudo apt install {debian_package}\n"
+            f"  macOS:          brew install {tool}\n"
+            f"  Windows:        choco install {tool}"
+        )
 
 
 # --------------------------------------------------------------------------------------------
@@ -51,28 +61,65 @@ def require(tool, why):
 
 def read_metadata(path):
     """Everything exiftool can see, as a dict."""
+    path = os.path.abspath(os.fspath(path))
+    if not os.path.isfile(path):
+        raise ValueError("not a regular file")
     require("exiftool", "reading metadata needs it")
     r = _run(["exiftool", "-j", "-G", "-n", "-a", "-u", path])
-    if r.returncode or not r.stdout.strip():
-        return {}
+    if not r.stdout.strip():
+        error = r.stderr.strip()[:300]
+        raise ValueError(error or "ExifTool could not read this file")
     try:
-        return json.loads(r.stdout)[0]
-    except Exception:
-        return {}
+        reports = json.loads(r.stdout)
+        metadata = reports[0]
+    except (IndexError, TypeError, json.JSONDecodeError) as exc:
+        raise ValueError(f"invalid ExifTool JSON: {exc}") from exc
+    if metadata.get("ExifTool:Error"):
+        raise ValueError(str(metadata["ExifTool:Error"]))
+    if r.returncode:
+        raise ValueError(r.stderr.strip()[:300] or f"ExifTool exited {r.returncode}")
+    mime = metadata.get("File:MIMEType", "")
+    if not str(mime).startswith("image/"):
+        kind = metadata.get("File:FileType", "unknown")
+        raise ValueError(f"not an image (ExifTool identified {kind})")
+    return metadata
 
 
 def read_c2pa(path, c2patool=None):
     """The C2PA manifest, or None. Never raises: absence is the common case."""
-    tool = c2patool or shutil.which("c2patool") or os.path.expanduser("~/.cargo/bin/c2patool")
-    if not os.path.exists(tool) if os.path.isabs(tool) else not shutil.which(tool):
+    _, data, _ = read_c2pa_report(path, c2patool)
+    return data
+
+
+def resolve_c2patool(tool=None):
+    candidate = tool or "c2patool"
+    resolved = shutil.which(candidate)
+    if resolved:
+        return resolved
+    if tool:
         return None
+    cargo_path = os.path.expanduser("~/.cargo/bin/c2patool")
+    return cargo_path if os.path.isfile(cargo_path) and os.access(cargo_path, os.X_OK) else None
+
+
+def read_c2pa_report(path, c2patool=None):
+    """Return (status, manifest, error) without conflating no tool, no claim, and failure."""
+    path = os.path.abspath(os.fspath(path))
+    tool = resolve_c2patool(c2patool)
+    if not tool:
+        return "unavailable", None, "c2patool is not installed"
     r = _run([tool, path])
-    if r.returncode or not r.stdout.strip():
-        return None
+    if r.returncode:
+        error = (r.stderr or r.stdout).strip()
+        if "No claim found" in error:
+            return "absent", None, ""
+        return "error", None, error[:300] or f"c2patool exited {r.returncode}"
+    if not r.stdout.strip():
+        return "error", None, "c2patool returned no report"
     try:
-        return json.loads(r.stdout)
-    except Exception:
-        return None
+        return "present", json.loads(r.stdout), ""
+    except (TypeError, json.JSONDecodeError) as exc:
+        return "error", None, f"invalid c2patool JSON: {exc}"
 
 
 CREDIT_FIELDS = [
@@ -108,7 +155,9 @@ def _first(meta, keys):
 def inspect(path, c2patool=None):
     """A structured report. The CLI formats it; the data is here so other things can use it."""
     meta = read_metadata(path)
-    c2pa = read_c2pa(path, c2patool)
+    c2pa_status, c2pa, c2pa_error = read_c2pa_report(path, c2patool)
+    if c2pa_status == "unavailable" and meta.get("JUMBF:JUMDLabel") == "c2pa":
+        c2pa_status = "detected-unverified"
 
     gps = {k: meta[k] for k in GPS_FIELDS if k in meta}
     credit = {}
@@ -137,11 +186,15 @@ def inspect(path, c2patool=None):
 
     return {
         "file": os.path.basename(path),
+        "path": os.path.abspath(path),
         "bytes": os.path.getsize(path),
+        "mime_type": meta.get("File:MIMEType"),
         "camera": camera,
         "gps": gps,
         "credit": credit,
         "c2pa": c2pa,
+        "c2pa_status": c2pa_status,
+        "c2pa_error": c2pa_error,
         "ai": ai,
         "has_any_credit": bool(credit),
     }
@@ -152,42 +205,104 @@ def inspect(path, c2patool=None):
 # --------------------------------------------------------------------------------------------
 
 def strip_jpeg(src, dst):
-    """Drop every APPn and COM segment. Pixels are untouched: this is a byte-level edit."""
+    """Drop private/application metadata while retaining display-critical JPEG segments."""
     with open(src, "rb") as f:
         data = f.read()
     if data[:2] != b"\xff\xd8":
         raise ValueError("not a JPEG")
+
+    orientation_segment = _jpeg_orientation_segment(src)
     out = bytearray(b"\xff\xd8")
     i = 2
-    removed = 0
+    inserted_orientation = False
+    saw_scan = False
     while i < len(data) - 1:
         if data[i] != 0xFF:
-            out += data[i:]
-            break
-        marker = data[i + 1]
-        if marker == 0xDA:                       # start of scan: the rest is image data
-            out += data[i:]
-            break
-        if marker in (0xD8, 0xD9) or 0xD0 <= marker <= 0xD7:
-            out += data[i:i + 2]
-            i += 2
+            raise ValueError("malformed JPEG marker stream")
+        marker_start = i
+        while i < len(data) and data[i] == 0xFF:
+            i += 1
+        if i >= len(data):
+            raise ValueError("truncated JPEG marker")
+        marker = data[i]
+        i += 1
+        if marker == 0x00:
+            raise ValueError("unexpected stuffed byte before JPEG scan")
+        if marker in (0x01, 0xD8, 0xD9) or 0xD0 <= marker <= 0xD7:
+            out += data[marker_start:i]
             continue
-        if i + 4 > len(data):
-            out += data[i:]
+        if i + 2 > len(data):
+            raise ValueError("truncated JPEG segment length")
+        seg_len = struct.unpack(">H", data[i:i + 2])[0]
+        if seg_len < 2:
+            raise ValueError("invalid JPEG segment length")
+        segment_end = i + seg_len
+        if segment_end > len(data):
+            raise ValueError("truncated JPEG segment")
+
+        if marker == 0xDA:                       # start of scan: the rest is image data
+            if orientation_segment and not inserted_orientation:
+                out += orientation_segment
+            if data.find(b"\xff\xd9", segment_end) < 0:
+                raise ValueError("JPEG scan has no end marker")
+            out += data[marker_start:]
+            saw_scan = True
             break
-        seg_len = struct.unpack(">H", data[i + 2:i + 4])[0]
-        if marker in _JPEG_SKIPPABLE:
-            removed += seg_len + 2
-        else:
-            out += data[i:i + 2 + seg_len]
-        i += 2 + seg_len
+
+        payload = data[i + 2:segment_end]
+        keep = marker not in _JPEG_METADATA or _keep_jpeg_application_segment(marker, payload)
+        if orientation_segment and not inserted_orientation and marker != 0xE0:
+            out += orientation_segment
+            inserted_orientation = True
+        if keep:
+            out += data[marker_start:segment_end]
+        i = segment_end
+    if not saw_scan:
+        raise ValueError("JPEG has no image scan")
     with open(dst, "wb") as f:
         f.write(out)
-    return removed
+    return len(data) - len(out)
+
+
+def _keep_jpeg_application_segment(marker, payload):
+    return (
+        (marker == 0xE0 and payload.startswith((b"JFIF\x00", b"JFXX\x00")))
+        or (marker == 0xE2 and payload.startswith(b"ICC_PROFILE\x00"))
+        or (marker == 0xEE and payload.startswith(b"Adobe"))
+    )
+
+
+def _orientation_value(path):
+    try:
+        from PIL import Image
+        with Image.open(path) as image:
+            value = image.getexif().get(274)
+    except (OSError, SyntaxError, ValueError):
+        return None
+    return value if value in range(2, 9) else None
+
+
+def _orientation_payload(path):
+    orientation = _orientation_value(path)
+    if orientation is None:
+        return None
+    from PIL import Image
+    exif = Image.Exif()
+    exif[274] = orientation
+    return exif.tobytes()
+
+
+def _jpeg_orientation_segment(path):
+    payload = _orientation_payload(path)
+    if payload is None:
+        return None
+    if len(payload) + 2 > 0xFFFF:
+        raise ValueError("orientation EXIF segment is too large")
+    return b"\xff\xe1" + struct.pack(">H", len(payload) + 2) + payload
 
 
 def strip_png(src, dst):
-    """Keep only the chunks a decoder needs. Everything else, including C2PA's caBX, goes."""
+    """Keep image/display chunks and drop private metadata, including C2PA's caBX chunk."""
     with open(src, "rb") as f:
         data = f.read()
     sig = b"\x89PNG\r\n\x1a\n"
@@ -195,23 +310,60 @@ def strip_png(src, dst):
         raise ValueError("not a PNG")
     out = bytearray(sig)
     i = 8
-    removed = 0
+    saw_header = False
+    saw_end = False
+    inserted_orientation = False
+    orientation_chunk = _png_orientation_chunk(src)
     while i < len(data):
-        if i + 8 > len(data):
-            break
+        if i + 12 > len(data):
+            raise ValueError("truncated PNG chunk")
         length = struct.unpack(">I", data[i:i + 4])[0]
         ctype = data[i + 4:i + 8]
         total = 12 + length
-        if ctype in _PNG_REQUIRED:
+        if i + total > len(data):
+            raise ValueError("truncated PNG chunk payload")
+        payload = data[i + 8:i + 8 + length]
+        expected_crc = struct.unpack(">I", data[i + 8 + length:i + total])[0]
+        actual_crc = zlib.crc32(ctype + payload) & 0xFFFFFFFF
+        if expected_crc != actual_crc:
+            raise ValueError(f"bad PNG CRC in {ctype.decode('ascii', 'replace')} chunk")
+        if not saw_header and ctype != b"IHDR":
+            raise ValueError("PNG does not start with IHDR")
+        if ctype == b"IHDR":
+            if saw_header:
+                raise ValueError("PNG has more than one IHDR chunk")
+            saw_header = True
+        if ctype == b"IDAT" and orientation_chunk and not inserted_orientation:
+            out += orientation_chunk
+            inserted_orientation = True
+        is_critical = 65 <= ctype[0] <= 90
+        if is_critical or ctype in _PNG_DISPLAY_CHUNKS:
             out += data[i:i + total]
-        else:
-            removed += total
         i += total
         if ctype == b"IEND":
+            saw_end = True
             break
+    if not saw_header or not saw_end:
+        raise ValueError("PNG is missing a required terminal chunk")
+    if i != len(data):
+        raise ValueError("PNG has data after IEND")
     with open(dst, "wb") as f:
         f.write(out)
-    return removed
+    return len(data) - len(out)
+
+
+def _png_chunk(ctype, payload):
+    crc = zlib.crc32(ctype + payload) & 0xFFFFFFFF
+    return struct.pack(">I", len(payload)) + ctype + payload + struct.pack(">I", crc)
+
+
+def _png_orientation_chunk(path):
+    payload = _orientation_payload(path)
+    if payload is None:
+        return None
+    if payload.startswith(b"Exif\x00\x00"):
+        payload = payload[6:]
+    return _png_chunk(b"eXIf", payload)
 
 
 def strip(src, dst):
@@ -230,10 +382,20 @@ def pixels_identical(a, b):
         from PIL import Image
     except ImportError:
         return None
-    with Image.open(a) as ia, Image.open(b) as ib:
-        if ia.size != ib.size or ia.mode != ib.mode:
-            return False
-        return ia.tobytes() == ib.tobytes()
+    def pixel_digest(path):
+        digest = hashlib.sha256()
+        with Image.open(path) as image:
+            digest.update(repr((image.size, image.mode, getattr(image, "n_frames", 1))).encode())
+            for frame in range(getattr(image, "n_frames", 1)):
+                image.seek(frame)
+                digest.update(repr((image.size, image.mode)).encode())
+                rows = max(1, (1024 * 1024) // max(1, image.width * len(image.getbands())))
+                for top in range(0, image.height, rows):
+                    digest.update(image.crop((0, top, image.width,
+                                              min(image.height, top + rows))).tobytes())
+        return digest.digest()
+
+    return pixel_digest(a) == pixel_digest(b)
 
 
 # --------------------------------------------------------------------------------------------
@@ -244,12 +406,16 @@ def write_credit(path, *, creator=None, credit=None, copyright_=None, terms=None
                  rights_url=None, licensor=None, licensor_url=None, contact=None,
                  title=None, description=None, keywords=None, drop_gps=True):
     """Write the IPTC Core / XMP fields that picture desks and Google actually read."""
+    path = os.path.abspath(os.fspath(path))
     require("exiftool", "writing metadata needs it")
     a = ["exiftool", "-overwrite_original", "-q", "-P"]
 
     def add(*pairs):
         a.extend(pairs)
 
+    writes_iptc = any((creator, credit, copyright_, title, description, keywords))
+    if writes_iptc:
+        add("-IPTC:CodedCharacterSet=UTF8")
     if creator:
         add(f"-XMP-dc:Creator={creator}", f"-IPTC:By-line={creator}", f"-EXIF:Artist={creator}")
     if credit:
@@ -302,6 +468,7 @@ LICENCES = {
 # --------------------------------------------------------------------------------------------
 
 CORNERS = ("bottom-right", "bottom-left", "top-right", "top-left")
+STAMP_EXTENSIONS = (".jpg", ".jpeg", ".png")
 
 
 def stamp(src, dst, *, text, logo=None, corner="bottom-right", scale=0.05, opacity=0.85,
@@ -311,32 +478,57 @@ def stamp(src, dst, *, text, logo=None, corner="bottom-right", scale=0.05, opaci
     THIS RE-ENCODES. It is the only operation here that costs image quality, and the CLI says so.
     Quality defaults to 94, which is visually lossless for a photograph at normal viewing sizes.
 
-    The visible mark is the only layer that survives a screenshot, and on most platforms it is the
-    only layer that survives at all."""
+    A visible mark survives a screenshot because it is part of the pixels, but platforms may crop,
+    resize, or soften it."""
     from PIL import Image, ImageDraw, ImageFont
 
+    # THE RE-ENCODE MUST CARRY EXIF AND ICC ACROSS, and this is not a nicety. Pillow writes a
+    # fresh file, so without this the stamp silently destroys the camera block, the colour
+    # profile and the GPS. That made `credit --stamp --keep-gps` a lie: it kept nothing, because
+    # the stamp had already thrown the EXIF away before the metadata step ran. Found by using
+    # the tool rather than by testing its parts.
     if corner not in CORNERS:
         raise ValueError(f"corner must be one of {CORNERS}")
+    if not 0 < scale <= 1:
+        raise ValueError("scale must be greater than 0 and at most 1")
+    if not 0 < opacity <= 1:
+        raise ValueError("opacity must be greater than 0 and at most 1")
+    if not 1 <= quality <= 100:
+        raise ValueError("quality must be between 1 and 100")
+    ext = os.path.splitext(dst)[1].lower()
+    if ext not in STAMP_EXTENSIONS:
+        raise ValueError("visible stamping supports JPEG and PNG only")
+    if not text and not logo:
+        raise ValueError("a visible stamp needs text or a logo")
+    if logo and not os.path.isfile(logo):
+        raise ValueError(f"logo not found: {logo}")
 
-    im = Image.open(src).convert("RGBA")
+    _carry = {}
+    with Image.open(src) as source:
+        source_has_alpha = "A" in source.getbands() or "transparency" in source.info
+        # Grab these BEFORE convert(), which does not carry them onto the new image.
+        if source.info.get("exif"):
+            _carry["exif"] = source.info["exif"]
+        if source.info.get("icc_profile"):
+            _carry["icc_profile"] = source.info["icc_profile"]
+        im = source.convert("RGBA")
     W, H = im.size
     unit = max(20, int(min(W, H) * scale))
     pad = max(6, int(unit * 0.30))
     text_px = int(unit * 0.50)
     sub_px = int(unit * 0.30)
 
-    try:
-        f_main = ImageFont.truetype(font, text_px) if font else ImageFont.load_default(text_px)
-        f_sub = ImageFont.truetype(font, sub_px) if font else ImageFont.load_default(sub_px)
-    except Exception:
-        f_main = ImageFont.load_default()
-        f_sub = ImageFont.load_default()
+    f_main = ImageFont.truetype(font, text_px) if font else ImageFont.load_default(size=text_px)
+    f_sub = ImageFont.truetype(font, sub_px) if font else ImageFont.load_default(size=sub_px)
 
     logo_im = None
-    if logo and os.path.exists(logo):
-        logo_im = Image.open(logo).convert("RGBA")
+    if logo:
+        with Image.open(logo) as source_logo:
+            logo_im = source_logo.convert("RGBA")
         ratio = unit / max(1, logo_im.height)
-        logo_im = logo_im.resize((max(1, int(logo_im.width * ratio)), unit), Image.LANCZOS)
+        logo_im = logo_im.resize(
+            (max(1, int(logo_im.width * ratio)), unit), Image.Resampling.LANCZOS
+        )
 
     probe = ImageDraw.Draw(Image.new("RGBA", (1, 1)))
     tw = int(probe.textlength(text, font=f_main))
@@ -365,14 +557,23 @@ def stamp(src, dst, *, text, logo=None, corner="bottom-right", scale=0.05, opaci
         plate.putalpha(alpha)
 
     inset = max(8, int(min(W, H) * 0.022))
+    available_w = max(1, W - 2 * inset)
+    available_h = max(1, H - 2 * inset)
+    fit = min(1.0, available_w / plate.width, available_h / plate.height)
+    if fit < 1.0:
+        plate = plate.resize(
+            (max(1, int(plate.width * fit)), max(1, int(plate.height * fit))),
+            Image.Resampling.LANCZOS,
+        )
+        plate_w, plate_h = plate.size
     x = W - plate_w - inset if "right" in corner else inset
     y = H - plate_h - inset if "bottom" in corner else inset
     im.alpha_composite(plate, (x, y))
 
-    out = im.convert("RGB")
-    ext = os.path.splitext(dst)[1].lower()
     if ext == ".png":
-        out.save(dst, "PNG")
+        out = im if source_has_alpha else im.convert("RGB")
+        out.save(dst, "PNG", **{k: v for k, v in _carry.items() if k == "icc_profile"})
     else:
-        out.save(dst, "JPEG", quality=quality, subsampling=0)
+        out = im.convert("RGB")
+        out.save(dst, "JPEG", quality=quality, subsampling=0, **_carry)
     return dst

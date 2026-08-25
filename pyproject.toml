@@ -8,7 +8,7 @@ version = "0.1.0"
 description = "snitch, no-comment and credit: find out what your image is telling people, make it stop, or put your name on it."
 readme = "README.md"
 requires-python = ">=3.9"
-license = { text = "MIT" }
+license = "MIT"
 authors = [{ name = "Randall Marshall", email = "info@3d3d.ca" }]
 keywords = ["metadata", "iptc", "xmp", "exif", "c2pa", "content-credentials",
             "watermark", "copyright", "attribution", "provenance"]
@@ -16,11 +16,20 @@ classifiers = [
   "Development Status :: 4 - Beta",
   "Environment :: Console",
   "Intended Audience :: End Users/Desktop",
-  "License :: OSI Approved :: MIT License",
   "Programming Language :: Python :: 3",
   "Topic :: Multimedia :: Graphics",
 ]
-dependencies = ["Pillow>=9.0"]
+dependencies = ["Pillow>=10.1"]
+
+[project.optional-dependencies]
+test = ["pytest>=8.0"]
+dev = [
+  "build>=1.2",
+  "mypy>=1.11,<2",
+  "pytest>=8.0",
+  "ruff>=0.8",
+  "twine>=5.1",
+]
 
 [project.urls]
 Homepage = "https://3d3d.ca"
@@ -33,3 +42,21 @@ credit = "snitch.cli:credit_main"
 
 [tool.setuptools.packages.find]
 include = ["snitch*"]
+
+[tool.pytest.ini_options]
+addopts = "-ra"
+testpaths = ["tests"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py39"
+
+[tool.ruff.lint]
+select = ["E4", "E7", "E9", "F", "I", "B", "BLE001", "PLW1510", "SIM"]
+
+[tool.mypy]
+python_version = "3.9"
+files = ["snitch"]
+check_untyped_defs = true
+warn_return_any = true
+warn_unused_configs = true
