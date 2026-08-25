@@ -166,7 +166,8 @@ def manifest(*, title, description=None, creator=None, org=None, url=None, conta
 
 
 def sign_file(path, man, key, cert, tool):
-    directory = os.path.dirname(os.path.abspath(path))
+    source = os.path.abspath(path)
+    directory = os.path.dirname(source)
     stem, ext = os.path.splitext(os.path.basename(path))
     manifest_fd, mpath = tempfile.mkstemp(prefix=f".{stem}.snitch-", suffix=".json",
                                           dir=directory, text=True)
@@ -181,12 +182,12 @@ def sign_file(path, man, key, cert, tool):
     try:
         with os.fdopen(manifest_fd, "w", encoding="utf-8") as manifest_file:
             json.dump(signing_manifest, manifest_file, indent=2)
-        r = subprocess.run([tool, path, "-m", mpath, "-o", tmp, "-f"],
+        r = subprocess.run([tool, source, "-m", mpath, "-o", tmp, "-f"],
                            capture_output=True, text=True, env=env, check=False)
         if r.returncode or not os.path.exists(tmp) or os.path.getsize(tmp) == 0:
             return False, (r.stderr or r.stdout)[:400]
-        shutil.copystat(path, tmp)
-        os.replace(tmp, path)
+        shutil.copystat(source, tmp)
+        os.replace(tmp, source)
         return True, ""
     finally:
         for temporary in (mpath, tmp):

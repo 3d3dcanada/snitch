@@ -107,6 +107,7 @@ def test_sign_file_passes_key_paths_not_private_material_in_environment(
 
     def fake_run(command, capture_output, text, env, check):
         assert check is False
+        assert command[1] == str(source.resolve())
         observed["env"] = env
         manifest_path = command[command.index("-m") + 1]
         output_path = command[command.index("-o") + 1]
