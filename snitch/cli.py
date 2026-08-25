@@ -188,7 +188,16 @@ def snitch_main(argv=None):
             elif r["ai"] == "camera":
                 print(_c("    asserts a camera made this, not a model", GRN))
         else:
-            print("  no C2PA Content Credential")
+            status = r["c2pa_status"]
+            if status == "absent":
+                print("  no C2PA Content Credential")
+            elif status == "detected-unverified":
+                print(_c("  C2PA Content Credential detected; validation unavailable", YEL))
+                print("    Install c2patool to read and validate it.")
+            elif status == "unavailable":
+                print(_c("  C2PA status unavailable: c2patool is not installed", YEL))
+            else:
+                print(_c(f"  C2PA check failed: {r['c2pa_error']}", RED))
 
     print(f"\n  {DIM}snitch --platforms   what survives an upload and what does not{OFF}")
     return 0
@@ -303,8 +312,12 @@ def credit_main(argv=None):
     s.add_argument("--verify", action="store_true", help="only check an existing credential")
     s.add_argument("--key", help="PEM private key, generated on first use if absent")
     s.add_argument("--cert", help="PEM certificate")
+    s.add_argument("--digital-source", choices=("camera", "digital", "screen", "human-edited",
+                                                 "generated", "ai-edited", "algorithmic",
+                                                 "data-driven"),
+                   help="how the signed asset was created; required with --sign")
     s.add_argument("--generated", action="store_true",
-                   help="declare a generative model made this, not a camera")
+                   help="deprecated alias for --digital-source generated")
 
     destination = p.add_mutually_exclusive_group()
     destination.add_argument("--in-place", action="store_true",
@@ -329,8 +342,16 @@ def credit_main(argv=None):
         p.error("nothing to do; provide credit fields, --stamp/--logo, or --sign")
     if a.generated and not a.sign:
         p.error("--generated only applies with --sign")
+    if a.digital_source and not a.sign:
+        p.error("--digital-source only applies with --sign")
+    if a.generated and a.digital_source:
+        p.error("use --generated or --digital-source generated, not both")
+    if a.sign and not (a.generated or a.digital_source):
+        p.error("--sign requires --digital-source so the credential does not guess")
     if (a.key or a.cert) and not a.sign:
         p.error("--key and --cert only apply with --sign")
+    if bool(a.key) != bool(a.cert):
+        p.error("--key and --cert must be provided together")
     if a.stamp_sub and not stamp_requested:
         p.error("--stamp-sub requires --stamp or --logo")
     if a.logo and not os.path.isfile(a.logo):
@@ -353,9 +374,13 @@ def credit_main(argv=None):
                 print(f"  {path}: not found", file=sys.stderr)
                 failed = True
                 continue
-            c = core.read_c2pa(path)
-            if not c:
+            status, c, error = core.read_c2pa_report(path)
+            if status == "absent":
                 print(f"  {os.path.basename(path)}: no Content Credential")
+                continue
+            if not c:
+                print(f"  {os.path.basename(path)}: C2PA check failed: {error}", file=sys.stderr)
+                failed = True
                 continue
             man = (c.get("manifests") or {}).get(c.get("active_manifest"), {})
             sig = man.get("signature_info") or {}
@@ -444,7 +469,7 @@ def credit_main(argv=None):
         ns = argparse.Namespace(files=targets, creator=a.creator, org=a.credit, url=a.url,
                                 contact=a.contact, licence=a.licence, title=a.title,
                                 description=a.description, key=a.key, cert=a.cert,
-                                generated=a.generated)
+                                generated=a.generated, digital_source=a.digital_source)
         if signer.run(ns):
             failed = True
 

@@ -70,16 +70,38 @@ def read_metadata(path):
 
 def read_c2pa(path, c2patool=None):
     """The C2PA manifest, or None. Never raises: absence is the common case."""
-    tool = c2patool or shutil.which("c2patool") or os.path.expanduser("~/.cargo/bin/c2patool")
-    if not os.path.exists(tool) if os.path.isabs(tool) else not shutil.which(tool):
+    _, data, _ = read_c2pa_report(path, c2patool)
+    return data
+
+
+def resolve_c2patool(tool=None):
+    candidate = tool or "c2patool"
+    resolved = shutil.which(candidate)
+    if resolved:
+        return resolved
+    if tool:
         return None
+    cargo_path = os.path.expanduser("~/.cargo/bin/c2patool")
+    return cargo_path if os.path.isfile(cargo_path) and os.access(cargo_path, os.X_OK) else None
+
+
+def read_c2pa_report(path, c2patool=None):
+    """Return (status, manifest, error) without conflating no tool, no claim, and failure."""
+    tool = resolve_c2patool(c2patool)
+    if not tool:
+        return "unavailable", None, "c2patool is not installed"
     r = _run([tool, path])
-    if r.returncode or not r.stdout.strip():
-        return None
+    if r.returncode:
+        error = (r.stderr or r.stdout).strip()
+        if "No claim found" in error:
+            return "absent", None, ""
+        return "error", None, error[:300] or f"c2patool exited {r.returncode}"
+    if not r.stdout.strip():
+        return "error", None, "c2patool returned no report"
     try:
-        return json.loads(r.stdout)
-    except Exception:
-        return None
+        return "present", json.loads(r.stdout), ""
+    except (TypeError, json.JSONDecodeError) as exc:
+        return "error", None, f"invalid c2patool JSON: {exc}"
 
 
 CREDIT_FIELDS = [
@@ -115,7 +137,9 @@ def _first(meta, keys):
 def inspect(path, c2patool=None):
     """A structured report. The CLI formats it; the data is here so other things can use it."""
     meta = read_metadata(path)
-    c2pa = read_c2pa(path, c2patool)
+    c2pa_status, c2pa, c2pa_error = read_c2pa_report(path, c2patool)
+    if c2pa_status == "unavailable" and meta.get("JUMBF:JUMDLabel") == "c2pa":
+        c2pa_status = "detected-unverified"
 
     gps = {k: meta[k] for k in GPS_FIELDS if k in meta}
     credit = {}
@@ -149,6 +173,8 @@ def inspect(path, c2patool=None):
         "gps": gps,
         "credit": credit,
         "c2pa": c2pa,
+        "c2pa_status": c2pa_status,
+        "c2pa_error": c2pa_error,
         "ai": ai,
         "has_any_credit": bool(credit),
     }
