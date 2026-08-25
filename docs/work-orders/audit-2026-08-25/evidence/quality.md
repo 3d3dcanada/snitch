@@ -22,8 +22,8 @@ $ mypy snitch
 Success: no issues found in 6 source files
 
 $ pytest -q
-...................................................                      [100%]
-51 passed in 3.64s
+..............................................................           [100%]
+62 passed in 4.09s
 
 $ python -m build --outdir /tmp/.../dist-quality2
 Successfully built snitch_tools-0.1.0.tar.gz and snitch_tools-0.1.0-py3-none-any.whl
@@ -37,7 +37,7 @@ snitch 0.1.0
 $ /tmp/.../wheel-smoke/bin/python -m snitch --version
 snitch 0.1.0
 
-$ go run github.com/rhysd/actionlint/cmd/actionlint@latest .github/workflows/quality.yml
+$ go run github.com/rhysd/actionlint/cmd/actionlint@v1.7.12 .github/workflows/quality.yml
 exit 0
 ```
 
