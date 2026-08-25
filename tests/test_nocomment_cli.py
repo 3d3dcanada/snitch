@@ -35,6 +35,15 @@ def test_invalid_input_is_an_error_and_leaves_no_output(tmp_path, capsys):
     assert not (tmp_path / "not-an-image-clean.jpg").exists()
 
 
+def test_directory_is_rejected_without_output(tmp_path, capsys):
+    source = tmp_path / "directory.jpg"
+    source.mkdir()
+
+    assert cli.nocomment_main([str(source)]) == 1
+    assert "not a regular file" in capsys.readouterr().err
+    assert not (tmp_path / "directory-clean.jpg").exists()
+
+
 def test_in_place_uses_unique_temporary_and_preserves_existing_sentinel(tmp_path):
     source = tmp_path / "photo.jpg"
     old_temporary = tmp_path / "photo.jpg.tmp"

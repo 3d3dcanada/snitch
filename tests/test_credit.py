@@ -159,6 +159,15 @@ def test_failed_write_is_nonzero_and_leaves_no_copy(tmp_path, capsys):
     assert not [name for name in os.listdir(tmp_path) if ".snitch-" in name]
 
 
+def test_directory_is_rejected_without_output(tmp_path, capsys):
+    source = tmp_path / "directory.jpg"
+    source.mkdir()
+
+    assert cli.credit_main(["--creator", "Artist", str(source)]) == 1
+    assert "not a regular file" in capsys.readouterr().err
+    assert not (tmp_path / "directory-credited.jpg").exists()
+
+
 def test_multiple_files_honour_output_directory(tmp_path):
     first = tmp_path / "first.jpg"
     second = tmp_path / "second.jpg"

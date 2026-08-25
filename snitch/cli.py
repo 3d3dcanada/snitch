@@ -175,6 +175,10 @@ def snitch_main(argv=None):
                     reports.append({"path": os.path.abspath(path), "error": "not found"})
                     failed = True
                     continue
+                if not os.path.isfile(path):
+                    reports.append({"path": os.path.abspath(path), "error": "not a regular file"})
+                    failed = True
+                    continue
                 try:
                     report = core.inspect(path)
                 except (OSError, ValueError, core.ToolMissing) as exc:
@@ -196,6 +200,10 @@ def snitch_main(argv=None):
     for path in a.files:
         if not os.path.exists(path):
             print(f"  {path}: not found", file=sys.stderr)
+            failed = True
+            continue
+        if not os.path.isfile(path):
+            print(f"  {path}: not a regular file", file=sys.stderr)
             failed = True
             continue
         try:
@@ -295,6 +303,10 @@ def nocomment_main(argv=None):
     for path, planned_output in zip(a.files, outputs):
         if not os.path.exists(path):
             print(f"  {path}: not found", file=sys.stderr)
+            failed = True
+            continue
+        if not os.path.isfile(path):
+            print(f"  {path}: not a regular file", file=sys.stderr)
             failed = True
             continue
         if a.in_place and os.path.islink(path):
@@ -432,6 +444,10 @@ def credit_main(argv=None):
                 print(f"  {path}: not found", file=sys.stderr)
                 failed = True
                 continue
+            if not os.path.isfile(path):
+                print(f"  {path}: not a regular file", file=sys.stderr)
+                failed = True
+                continue
             status, c, error = core.read_c2pa_report(path)
             if status == "absent":
                 print(f"  {os.path.basename(path)}: no Content Credential")
@@ -470,6 +486,10 @@ def credit_main(argv=None):
     for path, planned_output in zip(a.files, outputs):
         if not os.path.exists(path):
             print(f"  {path}: not found", file=sys.stderr)
+            failed = True
+            continue
+        if not os.path.isfile(path):
+            print(f"  {path}: not a regular file", file=sys.stderr)
             failed = True
             continue
         if a.in_place and os.path.islink(path):

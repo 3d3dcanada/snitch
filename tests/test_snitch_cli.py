@@ -26,6 +26,15 @@ def test_invalid_and_missing_files_return_failure(tmp_path, capsys):
     assert "not found" in errors
 
 
+def test_directory_is_rejected_without_recursive_scan(tmp_path, capsys):
+    assert cli.snitch_main([str(tmp_path)]) == 1
+    assert "not a regular file" in capsys.readouterr().err
+
+    assert cli.snitch_main(["--json", str(tmp_path)]) == 1
+    payload = json.loads(capsys.readouterr().out)
+    assert payload["files"][0]["error"] == "not a regular file"
+
+
 def test_human_output_quotes_paths_for_copy_and_paste(tmp_path, capsys):
     source = tmp_path / "photo José with spaces.jpg"
     make_jpeg(source)

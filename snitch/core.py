@@ -57,6 +57,8 @@ def require(tool, why):
 
 def read_metadata(path):
     """Everything exiftool can see, as a dict."""
+    if not os.path.isfile(path):
+        raise ValueError("not a regular file")
     require("exiftool", "reading metadata needs it")
     r = _run(["exiftool", "-j", "-G", "-n", "-a", "-u", path])
     if not r.stdout.strip():
