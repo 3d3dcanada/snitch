@@ -166,3 +166,24 @@ def test_sign_run_returns_failure_when_any_file_cannot_be_signed(tmp_path, monke
     )
 
     assert sign.run(args) == 1
+
+
+@pytest.mark.parametrize(
+    ("report", "expected"),
+    [
+        (("absent", None, ""), 1),
+        (("present", {"validation_state": "Valid", "manifests": {}}, ""), 0),
+        (("present", {"validation_state": "Invalid", "manifests": {}}, ""), 1),
+        (("error", None, "validator failed"), 1),
+    ],
+)
+def test_credit_verify_exit_status_reflects_credential_validity(
+    tmp_path, monkeypatch, report, expected
+):
+    from snitch import cli
+
+    source = tmp_path / "source.jpg"
+    make_jpeg(source)
+    monkeypatch.setattr(core, "read_c2pa_report", lambda _path: report)
+
+    assert cli.credit_main(["--verify", str(source)]) == expected

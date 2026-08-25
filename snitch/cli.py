@@ -435,6 +435,7 @@ def credit_main(argv=None):
             status, c, error = core.read_c2pa_report(path)
             if status == "absent":
                 print(f"  {os.path.basename(path)}: no Content Credential")
+                failed = True
                 continue
             if not c:
                 print(f"  {os.path.basename(path)}: C2PA check failed: {error}", file=sys.stderr)
@@ -445,6 +446,8 @@ def credit_main(argv=None):
             state = c.get("validation_state", "?")
             print(f"  {os.path.basename(path)}  {_c(state, GRN if state == 'Valid' else YEL)}  "
                   f"signed by {sig.get('issuer', '?')}  {man.get('title', '')}")
+            if state != "Valid":
+                failed = True
         return 1 if failed else 0
 
     lic_name, lic_url = (None, None)
