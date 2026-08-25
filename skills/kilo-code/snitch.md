@@ -34,8 +34,9 @@ untrusted self-signed handling are not verified here.
 
 1. `credit --stamp` is the most portable option. It survives metadata stripping and screenshots,
    but a crop can still remove it.
-2. `credit --sign --digital-source SOURCE` adds tamper-evident provenance. Do not promise platform
-   display for an untrusted self-signed credential; test the exact upload route.
+2. `credit --sign --digital-source SOURCE` adds a development-grade, tamper-evident credential. It
+   does not add a current CAWG identity assertion. Do not promise platform display; test the exact
+   upload route.
 3. IPTC/XMP is worth doing. Google Images documents reading specific rights and source fields.
 
 Show the `snitch --platforms` table rather than paraphrasing it.
@@ -56,9 +57,10 @@ Licences: cc-by, cc-by-sa, cc-by-nd, cc-by-nc, cc-by-nc-sa, cc-by-nc-nd, cc0, ar
 1. **`no-comment` does not remove invisible watermarks.** It removes metadata including C2PA. In-pixel
    watermarks like Google SynthID live in the image data. Metadata stripping does not touch them;
    removal attempts repaint pixels and cannot prove the mark is gone.
-2. **A self-signed credential does not prove who signed it.** It is valid and tamper-evident and
-   proves the file has not changed. It is not on the C2PA trust list, so strict validators report
-   the signer as unknown.
+2. **A self-signed credential does not prove who signed it.** Its asset binding is tamper-evident,
+   but it is a development credential with a legacy creator metadata assertion, not a current CAWG
+   identity assertion. It is not on the C2PA trust list, so strict validators report the signer as
+   unknown.
 3. **Metadata does not create copyright.** It evidences authorship and carries licence terms.
 
 Removing metadata is a legitimate need: people strip GPS before posting and photographers strip

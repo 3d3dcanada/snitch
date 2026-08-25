@@ -35,8 +35,9 @@ So when someone asks how to make sure they get credit:
 
 1. **`credit --stamp` is the most portable option** if credit matters. It survives metadata
    stripping and screenshots, but a crop can still remove it.
-2. **`credit --sign --digital-source SOURCE`** adds tamper-evident provenance. Do not promise that a
-   platform will display an untrusted self-signed credential; test the exact upload route.
+2. **`credit --sign --digital-source SOURCE`** adds a development-grade, tamper-evident credential.
+   It does not add a current CAWG identity assertion. Do not promise that a platform will display
+   it; test the exact upload route.
 3. **The IPTC/XMP fields** are worth writing. Google Images documents reading specific rights and
    source fields, and established publishing workflows use them.
 
@@ -66,10 +67,11 @@ Licence presets: `cc-by`, `cc-by-sa`, `cc-by-nd`, `cc-by-nc`, `cc-by-nc-sa`, `cc
    manifests. In-pixel watermarks such as Google SynthID are part of the image data. Metadata
    stripping does not touch them; removal attempts repaint pixels and cannot prove the mark is
    gone.
-2. **A self-signed credential does not prove who signed it.** It is valid and tamper-evident and
-   proves the file has not changed since signing. It is not on the C2PA trust list, so strict
-   validators report the signer as unknown. Being on that list means buying a certificate from a CA
-   in the C2PA programme.
+2. **A self-signed credential does not prove who signed it.** Its asset binding is tamper-evident,
+   but it is a development credential with a legacy creator metadata assertion, not a current CAWG
+   identity assertion. It is not on the C2PA trust list, so strict validators report the signer as
+   unknown. A conforming claim generator needs an eligible certificate from a CA in the C2PA
+   programme.
 3. **Metadata does not create copyright.** Copyright exists without it. Metadata evidences
    authorship and carries licence terms. Say the smaller, true thing.
 

@@ -388,7 +388,8 @@ def credit_main(argv=None):
     g.add_argument("--quality", type=int, default=94)
 
     s = p.add_argument_group("C2PA Content Credentials; platform and trust support varies")
-    s.add_argument("--sign", action="store_true", help="also add a self-signed Content Credential")
+    s.add_argument("--sign", action="store_true",
+                   help="also add a development-grade self-signed Content Credential")
     s.add_argument("--verify", action="store_true", help="only check an existing credential")
     s.add_argument("--key", help="PEM private key, generated on first use if absent")
     s.add_argument("--cert", help="PEM certificate")

@@ -103,9 +103,10 @@ CopyrightNotice, UsageTerms, WebStatement, LicensorName, LicensorURL, keywords.
 - `--stamp` burns a visible mark into the pixels. **That is the only layer that survives
   screenshots**, though a platform can still crop or soften it. Stamping currently supports JPEG
   and PNG; it preserves existing PNG transparency.
-- `--sign --digital-source camera` adds a self-signed C2PA Content Credential and requires an
-  explicit source type so it never guesses camera versus AI provenance. LinkedIn documents inbound
-  C2PA display, but rollout and untrusted self-signed handling remain unverified here.
+- `--sign --digital-source camera` adds a development-grade self-signed C2PA Content Credential
+  and requires an explicit source type so it never guesses camera versus AI provenance. It does
+  not add a current CAWG identity assertion. LinkedIn documents inbound C2PA display, but rollout
+  and untrusted self-signed handling remain unverified here.
 - `--verify` checks an existing credential instead of writing anything.
 
 Metadata-only credit has been exercised on JPEG, PNG, WebP, TIFF, and HEIC. Exact namespaces vary
