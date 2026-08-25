@@ -9,7 +9,6 @@ from PIL import Image
 
 from snitch import core, sign
 
-
 C2PATOOL = pytest.mark.skipif(not sign.c2patool(), reason="c2patool is not installed")
 OPENSSL = pytest.mark.skipif(not shutil.which("openssl"), reason="OpenSSL is not installed")
 
@@ -100,11 +99,13 @@ def test_sign_file_passes_key_paths_not_private_material_in_environment(
     cert.write_text("PUBLIC CERT")
     observed = {}
 
-    def fake_run(command, capture_output, text, env):
+    def fake_run(command, capture_output, text, env, check):
+        assert check is False
         observed["env"] = env
         manifest_path = command[command.index("-m") + 1]
         output_path = command[command.index("-o") + 1]
-        observed["manifest"] = json.loads(open(manifest_path, encoding="utf-8").read())
+        with open(manifest_path, encoding="utf-8") as manifest_file:
+            observed["manifest"] = json.load(manifest_file)
         shutil.copy2(source, output_path)
         return subprocess.CompletedProcess(command, 0, "ok", "")
 

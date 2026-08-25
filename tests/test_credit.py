@@ -6,7 +6,6 @@ from PIL import Image
 
 from snitch import cli, core
 
-
 EXIFTOOL = pytest.mark.skipif(not shutil.which("exiftool"), reason="ExifTool is not installed")
 
 

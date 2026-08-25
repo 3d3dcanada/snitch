@@ -14,7 +14,6 @@ STAMPING DOES re-encode, because it has to: it changes pixels. That is stated at
 and in the CLI output, because a user deserves to know which operation costs them quality.
 """
 
-import io
 import hashlib
 import json
 import os
@@ -38,7 +37,7 @@ class ToolMissing(RuntimeError):
 
 
 def _run(cmd, **kw):
-    return subprocess.run(cmd, capture_output=True, text=True, **kw)
+    return subprocess.run(cmd, capture_output=True, text=True, check=False, **kw)
 
 
 def have(tool):
@@ -270,7 +269,7 @@ def _orientation_value(path):
         from PIL import Image
         with Image.open(path) as image:
             value = image.getexif().get(274)
-    except Exception:
+    except (OSError, SyntaxError, ValueError):
         return None
     return value if value in range(2, 9) else None
 
@@ -507,7 +506,9 @@ def stamp(src, dst, *, text, logo=None, corner="bottom-right", scale=0.05, opaci
         with Image.open(logo) as source_logo:
             logo_im = source_logo.convert("RGBA")
         ratio = unit / max(1, logo_im.height)
-        logo_im = logo_im.resize((max(1, int(logo_im.width * ratio)), unit), Image.LANCZOS)
+        logo_im = logo_im.resize(
+            (max(1, int(logo_im.width * ratio)), unit), Image.Resampling.LANCZOS
+        )
 
     probe = ImageDraw.Draw(Image.new("RGBA", (1, 1)))
     tw = int(probe.textlength(text, font=f_main))
@@ -540,8 +541,10 @@ def stamp(src, dst, *, text, logo=None, corner="bottom-right", scale=0.05, opaci
     available_h = max(1, H - 2 * inset)
     fit = min(1.0, available_w / plate.width, available_h / plate.height)
     if fit < 1.0:
-        plate = plate.resize((max(1, int(plate.width * fit)),
-                              max(1, int(plate.height * fit))), Image.LANCZOS)
+        plate = plate.resize(
+            (max(1, int(plate.width * fit)), max(1, int(plate.height * fit))),
+            Image.Resampling.LANCZOS,
+        )
         plate_w, plate_h = plate.size
     x = W - plate_w - inset if "right" in corner else inset
     y = H - plate_h - inset if "bottom" in corner else inset

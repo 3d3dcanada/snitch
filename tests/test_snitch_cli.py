@@ -82,7 +82,7 @@ def test_inspect_marks_detected_manifest_unverified_without_c2patool(tmp_path, m
 def test_python_module_entrypoint_and_version_work():
     result = subprocess.run(
         [sys.executable, "-m", "snitch", "--version"], capture_output=True, text=True,
-        cwd=os.path.dirname(os.path.dirname(__file__)),
+        cwd=os.path.dirname(os.path.dirname(__file__)), check=False,
     )
 
     assert result.returncode == 0

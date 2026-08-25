@@ -13,6 +13,7 @@ means buying a certificate from a CA in the C2PA programme. Nothing here can sho
 tool that implied otherwise would be lying to you.
 """
 
+import contextlib
 import json
 import os
 import shutil
@@ -21,6 +22,7 @@ import sys
 import tempfile
 
 from .core import LICENCES, _run
+
 
 def config_dir(os_name=None, platform_name=None, environ=None, home=None):
     os_name = os_name or os.name
@@ -117,10 +119,8 @@ def ensure_cert(key=DEFAULT_KEY, cert=DEFAULT_CERT, org="snitch"):
         for temporary in (key_tmp, cert_tmp):
             if not temporary:
                 continue
-            try:
+            with contextlib.suppress(FileNotFoundError):
                 os.unlink(temporary)
-            except FileNotFoundError:
-                pass
 
 
 def manifest(*, title, description=None, creator=None, org=None, url=None, contact=None,
@@ -148,7 +148,10 @@ def manifest(*, title, description=None, creator=None, org=None, url=None, conta
         digital_source = "generated"
     if digital_source not in DIGITAL_SOURCES:
         raise ValueError("a valid digital source is required for a C2PA created action")
-    action = {"action": "c2pa.created", "digitalSourceType": DIGITAL_SOURCES[digital_source]}
+    action: dict[str, object] = {
+        "action": "c2pa.created",
+        "digitalSourceType": DIGITAL_SOURCES[digital_source],
+    }
     if org:
         action["softwareAgent"] = {"name": org}
 
@@ -179,7 +182,7 @@ def sign_file(path, man, key, cert, tool):
         with os.fdopen(manifest_fd, "w", encoding="utf-8") as manifest_file:
             json.dump(signing_manifest, manifest_file, indent=2)
         r = subprocess.run([tool, path, "-m", mpath, "-o", tmp, "-f"],
-                           capture_output=True, text=True, env=env)
+                           capture_output=True, text=True, env=env, check=False)
         if r.returncode or not os.path.exists(tmp) or os.path.getsize(tmp) == 0:
             return False, (r.stderr or r.stdout)[:400]
         shutil.copystat(path, tmp)
@@ -187,10 +190,8 @@ def sign_file(path, man, key, cert, tool):
         return True, ""
     finally:
         for temporary in (mpath, tmp):
-            try:
+            with contextlib.suppress(FileNotFoundError):
                 os.unlink(temporary)
-            except FileNotFoundError:
-                pass
 
 
 def run(a):

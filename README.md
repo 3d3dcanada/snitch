@@ -137,6 +137,20 @@ Signing and full C2PA validation additionally need
 reports C2PA validation as unavailable instead of falsely reporting that no credential exists;
 ExifTool can still detect a C2PA/JUMBF container.
 
+### Development checks
+
+```bash
+python -m pip install -e '.[dev]'
+ruff check snitch tests
+mypy snitch
+pytest -q
+python -m build
+python -m twine check dist/*
+```
+
+CI runs those checks on Linux and macOS, exercises the declared Python 3.9 floor and a current
+Python, and also runs the command suite on Windows.
+
 ### Agent skills
 
 Drop-in skills for Claude Code and Kilo Code are in [`skills/`](skills/). One `cp` each.

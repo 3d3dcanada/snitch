@@ -10,6 +10,7 @@ have forgotten which flag of which subcommand read GPS.
 """
 
 import argparse
+import contextlib
 import json
 import math
 import os
@@ -18,8 +19,7 @@ import shutil
 import sys
 import tempfile
 
-from . import __version__
-from . import core, survival
+from . import __version__, core, survival
 from .core import LICENCES
 
 BOLD = "\033[1m"
@@ -36,7 +36,7 @@ def _colour_enabled():
     if os.name != "nt":
         return True
     return bool(os.environ.get("WT_SESSION") or os.environ.get("ANSICON")
-                or os.environ.get("ConEmuANSI") == "ON"
+                or os.environ.get("ConEmuANSI") == "ON"  # noqa: SIM112 - ConEmu's real spelling
                 or os.environ.get("TERM", "").lower() not in ("", "dumb"))
 
 
@@ -99,10 +99,8 @@ def _strip_atomic(source, target):
         os.replace(temporary, target)
         return removed, same
     finally:
-        try:
+        with contextlib.suppress(FileNotFoundError):
             os.unlink(temporary)
-        except FileNotFoundError:
-            pass
 
 
 def _files(sp):
@@ -509,10 +507,8 @@ def credit_main(argv=None):
             continue
         finally:
             if temporary:
-                try:
+                with contextlib.suppress(FileNotFoundError):
                     os.unlink(temporary)
-                except FileNotFoundError:
-                    pass
 
         mark = _c("ok", GRN)
         stamped = " + visible stamp" if (a.stamp or a.logo) else ""
