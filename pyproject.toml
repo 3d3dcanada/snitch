@@ -1,0 +1,33 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "imprint-cli"
+version = "0.1.0"
+description = "Put your name on your work, and find out what a platform will remove."
+readme = "README.md"
+requires-python = ">=3.9"
+license = { text = "MIT" }
+authors = [{ name = "Randall Marshall", email = "info@3d3d.ca" }]
+keywords = ["metadata", "iptc", "xmp", "exif", "c2pa", "content-credentials",
+            "watermark", "copyright", "attribution", "provenance"]
+classifiers = [
+  "Development Status :: 4 - Beta",
+  "Environment :: Console",
+  "Intended Audience :: End Users/Desktop",
+  "License :: OSI Approved :: MIT License",
+  "Programming Language :: Python :: 3",
+  "Topic :: Multimedia :: Graphics",
+]
+dependencies = ["Pillow>=9.0"]
+
+[project.urls]
+Homepage = "https://3d3d.ca"
+Source = "https://github.com/3d3dcanada/imprint"
+
+[project.scripts]
+imprint = "imprint.cli:main"
+
+[tool.setuptools.packages.find]
+include = ["imprint*"]
