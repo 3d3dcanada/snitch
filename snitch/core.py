@@ -46,9 +46,13 @@ def have(tool):
 
 def require(tool, why):
     if not have(tool):
-        raise ToolMissing(f"{tool} is not installed, and {why}.\n"
-                          f"  Debian/Ubuntu:  sudo apt install {tool}\n"
-                          f"  macOS:          brew install {tool}")
+        debian_package = "libimage-exiftool-perl" if tool == "exiftool" else tool
+        raise ToolMissing(
+            f"{tool} is not installed, and {why}.\n"
+            f"  Debian/Ubuntu:  sudo apt install {debian_package}\n"
+            f"  macOS:          brew install {tool}\n"
+            f"  Windows:        choco install {tool}"
+        )
 
 
 # --------------------------------------------------------------------------------------------

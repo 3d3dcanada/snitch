@@ -159,6 +159,18 @@ def test_failed_write_is_nonzero_and_leaves_no_copy(tmp_path, capsys):
     assert not [name for name in os.listdir(tmp_path) if ".snitch-" in name]
 
 
+def test_missing_exiftool_is_a_clean_error_without_partial_output(tmp_path, monkeypatch, capsys):
+    source = tmp_path / "source.jpg"
+    make_jpeg(source)
+    monkeypatch.setattr(core, "have", lambda _tool: False)
+
+    assert cli.credit_main(["--creator", "Artist", str(source)]) == 1
+    error = capsys.readouterr().err
+    assert "exiftool is not installed" in error
+    assert "libimage-exiftool-perl" in error
+    assert not (tmp_path / "source-credited.jpg").exists()
+
+
 def test_directory_is_rejected_without_output(tmp_path, capsys):
     source = tmp_path / "directory.jpg"
     source.mkdir()

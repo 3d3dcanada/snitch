@@ -536,7 +536,7 @@ def credit_main(argv=None):
                 raise ValueError(err or "ExifTool did not write the requested metadata")
             os.replace(temporary, target)
             temporary = None
-        except (OSError, ValueError) as e:
+        except (OSError, ValueError, core.ToolMissing) as e:
             print(f"  {os.path.basename(path)}: FAILED {e}", file=sys.stderr)
             failed = True
             continue
