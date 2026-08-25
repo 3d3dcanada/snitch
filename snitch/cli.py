@@ -13,6 +13,7 @@ import argparse
 import os
 import shutil
 import sys
+import tempfile
 
 from . import core, survival
 from .core import LICENCES
@@ -34,6 +35,53 @@ def _outpath(src, out, suffix):
         return out
     stem, ext = os.path.splitext(src)
     return f"{stem}{suffix}{ext}"
+
+
+def _output_paths(files, out, suffix):
+    if out and os.path.isdir(out):
+        targets = [_outpath(os.path.join(out, os.path.basename(path)), None, suffix)
+                   for path in files]
+    elif out and len(files) > 1:
+        raise ValueError("--out must be an existing directory when processing multiple files")
+    else:
+        targets = [_outpath(path, out, suffix) for path in files]
+    canonical = [os.path.normcase(os.path.abspath(path)) for path in targets]
+    if len(canonical) != len(set(canonical)):
+        raise ValueError("multiple inputs would write the same output filename")
+    return targets
+
+
+def _same_file(a, b):
+    try:
+        return os.path.samefile(a, b)
+    except (FileNotFoundError, OSError):
+        return os.path.normcase(os.path.abspath(a)) == os.path.normcase(os.path.abspath(b))
+
+
+def _temporary_sibling(path):
+    directory = os.path.dirname(os.path.abspath(path))
+    prefix = f".{os.path.basename(path)}.snitch-"
+    fd, temporary = tempfile.mkstemp(prefix=prefix, suffix=".tmp", dir=directory)
+    os.close(fd)
+    return temporary
+
+
+def _strip_atomic(source, target):
+    temporary = _temporary_sibling(target)
+    try:
+        removed = core.strip(source, temporary)
+        same = core.pixels_identical(source, temporary)
+        if same is not True:
+            reason = "pixel comparison unavailable" if same is None else "pixels changed"
+            raise ValueError(f"refusing to write output: {reason}")
+        shutil.copystat(source, temporary, follow_symlinks=True)
+        os.replace(temporary, target)
+        return removed, same
+    finally:
+        try:
+            os.unlink(temporary)
+        except FileNotFoundError:
+            pass
 
 
 def _files(sp):
@@ -155,30 +203,46 @@ def nocomment_main(argv=None):
                "and no tool removes them, including this one.",
         formatter_class=argparse.RawDescriptionHelpFormatter)
     _files(p)
-    p.add_argument("--in-place", action="store_true", help="overwrite instead of writing a copy")
-    p.add_argument("-o", "--out")
+    destination = p.add_mutually_exclusive_group()
+    destination.add_argument("--in-place", action="store_true",
+                             help="atomically replace each input file")
+    destination.add_argument("-o", "--out",
+                             help="output file, or an existing directory for multiple inputs")
+    p.add_argument("--force", action="store_true", help="replace an existing output file")
     a = p.parse_args(argv)
     if not a.files:
         p.print_help()
         return 2
 
-    for path in a.files:
+    try:
+        outputs = _output_paths(a.files, a.out, "-clean")
+    except ValueError as e:
+        p.error(str(e))
+
+    failed = False
+    for path, planned_output in zip(a.files, outputs):
         if not os.path.exists(path):
-            print(f"  {path}: not found")
+            print(f"  {path}: not found", file=sys.stderr)
+            failed = True
             continue
-        out = path if a.in_place else _outpath(path, a.out if len(a.files) == 1 else None,
-                                               "-clean")
+        if a.in_place and os.path.islink(path):
+            print(f"  {path}: refusing in-place replacement of a symlink", file=sys.stderr)
+            failed = True
+            continue
+        out = path if a.in_place else planned_output
+        if not a.in_place and _same_file(path, out):
+            print(f"  {path}: output is the input; use --in-place", file=sys.stderr)
+            failed = True
+            continue
+        if not a.in_place and os.path.lexists(out) and not a.force:
+            print(f"  {out}: output exists; pass --force to replace it", file=sys.stderr)
+            failed = True
+            continue
         try:
-            if a.in_place:
-                tmp = path + ".tmp"
-                removed = core.strip(path, tmp)
-                same = core.pixels_identical(path, tmp)
-                shutil.move(tmp, path)
-            else:
-                removed = core.strip(path, out)
-                same = core.pixels_identical(path, out)
-        except ValueError as e:
-            print(f"  {os.path.basename(path)}: {e}")
+            removed, same = _strip_atomic(path, out)
+        except (OSError, ValueError) as e:
+            print(f"  {os.path.basename(path)}: {e}", file=sys.stderr)
+            failed = True
             continue
         proof = ""
         if same is True:
@@ -189,7 +253,7 @@ def nocomment_main(argv=None):
 
     print(f"\n  {_c('In-pixel watermarks are not touched by this or any tool.', BOLD)}")
     print("  SynthID and its relatives live in the image data and survive by design.")
-    return 0
+    return 1 if failed else 0
 
 
 # ==============================================================================================
