@@ -1,0 +1,33 @@
+Read ~/snitch/AUDIT-PROMPT.md and carry it out in full. Work in ~/snitch.
+
+Do not skim it and do not summarise it back to me. Work through every section in
+order and actually do the thing each one asks for. Section 3 lists 14 known weak
+points the author wrote down honestly so you would not waste your pass finding
+them again: treat that as your starting backlog, not as the whole job. The
+section on the platform table in survival.py is the one I care most about,
+because we are about to publish that table on a website as a reference.
+
+Verify by running, not by reading. Install it into a clean venv, exercise every
+command against real files, and check the output is actually true. If you claim
+something works, you have run it.
+
+Then go wider than the file asks. Research the space as it stands in 2026 and
+tell me what is missing:
+
+- What comparable tools exist, what do they do that this does not, and where are
+  they overclaiming in ways we could beat honestly.
+- What has moved recently in C2PA, Content Credentials, IPTC, and platform
+  metadata handling that this should support and does not.
+- What formats, fields or workflows a real photographer, illustrator or 3D
+  designer would expect that are absent.
+- Anything about the CLI's ergonomics that would annoy a person using it daily.
+
+Propose concrete additions with a short reason each, ranked by value against
+effort. Do not build the big ones without asking me first. Fix the bugs, propose
+the features.
+
+Work in small commits with a clear message each. No giant rewrite.
+
+Finish with the five-part report the file asks for, plus your research
+proposals. If it is rough, say it is rough. I would rather hear that now than
+after it is linked from the site.

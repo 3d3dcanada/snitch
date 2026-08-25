@@ -528,13 +528,18 @@ def credit_main(argv=None):
                            subtext=a.stamp_sub, logo=a.logo, corner=a.corner,
                            scale=a.scale, opacity=a.opacity, font=a.font, quality=a.quality)
 
-            ok, err = core.write_credit(
-                temporary, creator=a.creator, credit=a.credit, copyright_=a.copyright,
-                terms=terms, rights_url=a.rights_url or lic_url, licensor=a.credit,
-                licensor_url=a.url, contact=a.contact, title=a.title,
-                description=a.description, keywords=a.keyword, drop_gps=not a.keep_gps)
-            if not ok:
-                raise ValueError(err or "ExifTool did not write the requested metadata")
+            # ONLY CALL EXIFTOOL IF THERE IS SOMETHING FOR IT TO DO. `credit --sign --keep-gps`
+            # asks for no metadata and no GPS drop, so write_credit correctly reported "nothing
+            # to write" and the file was then failed before it ever reached the signer. Signing
+            # a file with no other changes is a legitimate thing to want.
+            if metadata_requested or not a.keep_gps:
+                ok, err = core.write_credit(
+                    temporary, creator=a.creator, credit=a.credit, copyright_=a.copyright,
+                    terms=terms, rights_url=a.rights_url or lic_url, licensor=a.credit,
+                    licensor_url=a.url, contact=a.contact, title=a.title,
+                    description=a.description, keywords=a.keyword, drop_gps=not a.keep_gps)
+                if not ok:
+                    raise ValueError(err or "ExifTool did not write the requested metadata")
             os.replace(temporary, target)
             temporary = None
         except (OSError, ValueError, core.ToolMissing) as e:
@@ -548,7 +553,12 @@ def credit_main(argv=None):
 
         mark = _c("ok", GRN)
         stamped = " + visible stamp" if (a.stamp or a.logo) else ""
-        print(f"  {os.path.basename(target)}  credit written{stamped}  {mark}")
+        did = "credit written" if metadata_requested else ("stamped" if stamp_requested
+                                                           else "unchanged")
+        if metadata_requested:
+            print(f"  {os.path.basename(target)}  {did}{stamped}  {mark}")
+        else:
+            print(f"  {os.path.basename(target)}  {did}  {mark}")
         if stamp_requested:
             if os.path.splitext(target)[1].lower() in (".jpg", ".jpeg"):
                 print(f"    stamping re-encoded the JPEG at quality {a.quality}")

@@ -482,6 +482,11 @@ def stamp(src, dst, *, text, logo=None, corner="bottom-right", scale=0.05, opaci
     resize, or soften it."""
     from PIL import Image, ImageDraw, ImageFont
 
+    # THE RE-ENCODE MUST CARRY EXIF AND ICC ACROSS, and this is not a nicety. Pillow writes a
+    # fresh file, so without this the stamp silently destroys the camera block, the colour
+    # profile and the GPS. That made `credit --stamp --keep-gps` a lie: it kept nothing, because
+    # the stamp had already thrown the EXIF away before the metadata step ran. Found by using
+    # the tool rather than by testing its parts.
     if corner not in CORNERS:
         raise ValueError(f"corner must be one of {CORNERS}")
     if not 0 < scale <= 1:
@@ -498,8 +503,14 @@ def stamp(src, dst, *, text, logo=None, corner="bottom-right", scale=0.05, opaci
     if logo and not os.path.isfile(logo):
         raise ValueError(f"logo not found: {logo}")
 
+    _carry = {}
     with Image.open(src) as source:
         source_has_alpha = "A" in source.getbands() or "transparency" in source.info
+        # Grab these BEFORE convert(), which does not carry them onto the new image.
+        if source.info.get("exif"):
+            _carry["exif"] = source.info["exif"]
+        if source.info.get("icc_profile"):
+            _carry["icc_profile"] = source.info["icc_profile"]
         im = source.convert("RGBA")
     W, H = im.size
     unit = max(20, int(min(W, H) * scale))
@@ -561,8 +572,8 @@ def stamp(src, dst, *, text, logo=None, corner="bottom-right", scale=0.05, opaci
 
     if ext == ".png":
         out = im if source_has_alpha else im.convert("RGB")
-        out.save(dst, "PNG")
+        out.save(dst, "PNG", **{k: v for k, v in _carry.items() if k == "icc_profile"})
     else:
         out = im.convert("RGB")
-        out.save(dst, "JPEG", quality=quality, subsampling=0)
+        out.save(dst, "JPEG", quality=quality, subsampling=0, **_carry)
     return dst
