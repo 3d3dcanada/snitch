@@ -6,11 +6,11 @@ and Google document reading some C2PA signals. Their handling varies by product 
 LinkedIn does not document whether an untrusted self-signed credential from this tool gets its UI.
 
 THE HONEST LIMIT, STATED HERE AND IN THE OUTPUT. A certificate this tool generates for you is
-SELF-SIGNED. That is enough for a valid, readable, tamper-evident manifest, and any validator will
-confirm the file has not been altered since you signed it. It is NOT on the C2PA trust list, so a
-validator that checks issuers reports the signer as unknown rather than as you. Being on that list
-means buying a certificate from a CA in the C2PA programme. Nothing here can shortcut that, and a
-tool that implied otherwise would be lying to you.
+SELF-SIGNED. That is enough for a readable, tamper-evident development credential whose asset
+binding can validate. It is NOT a conforming identity credential and is not on the C2PA trust
+list, so a validator that checks issuers reports the signer as unknown rather than as you. Being
+on that list means obtaining a certificate from a CA in the C2PA programme. Nothing here can
+shortcut that, and a tool that implied otherwise would be lying to you.
 """
 
 import contextlib
@@ -21,6 +21,7 @@ import subprocess
 import sys
 import tempfile
 
+from . import __version__
 from .core import LICENCES, _run
 
 
@@ -152,11 +153,10 @@ def manifest(*, title, description=None, creator=None, org=None, url=None, conta
         "action": "c2pa.created",
         "digitalSourceType": DIGITAL_SOURCES[digital_source],
     }
-    if org:
-        action["softwareAgent"] = {"name": org}
+    action["softwareAgent"] = {"name": "snitch", "version": __version__}
 
     return {
-        "claim_generator_info": [{"name": org or "snitch", "version": "1.0"}],
+        "claim_generator_info": [{"name": "snitch", "version": __version__}],
         "title": title,
         "assertions": [
             {"label": "stds.schema-org.CreativeWork", "data": work},
@@ -231,8 +231,8 @@ def run(a):
         failed = failed or not ok
 
     if signed:
-        print("\n  This certificate is self-signed. The credential is valid and tamper-evident,")
-        print("  and detects changes made after signing. It is not on the C2PA trust list, so")
-        print("  strict validators will report the signer as unknown rather than as you.")
+        print("\n  This is a development-grade self-signed credential. Its asset binding is")
+        print("  tamper-evident, but it is not a conforming identity credential or on the")
+        print("  C2PA trust list. Strict validators report the signer as unknown rather than you.")
         print("  Getting on that list requires a certificate from a CA in the C2PA programme.")
     return 1 if failed else 0

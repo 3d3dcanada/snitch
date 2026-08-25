@@ -170,10 +170,11 @@ through a removal pipeline. DeepMind reports 99.72% SynthID detection under wors
 says it removes.
 
 **A self-signed credential does not prove who signed it.** The certificate generated on first use
-produces a valid, tamper-evident manifest, and any validator will confirm the file has not changed
-since signing. It is not on the C2PA trust list, so a validator that checks issuers reports the
-signer as unknown rather than as you. Being on that list means buying a certificate from a CA in
-the C2PA programme. Nothing here shortcuts that.
+produces a readable, tamper-evident development credential whose asset binding can validate. Its
+creator block is a legacy metadata assertion, not a current CAWG identity assertion, and the
+certificate is not on the C2PA trust list. A validator that checks identity therefore reports the
+signer as unknown rather than as you. A conforming claim generator needs an eligible certificate
+from a CA in the C2PA programme. Nothing here shortcuts that.
 
 **Metadata does not create copyright.** You hold copyright in your work whether or not a file says
 so. What metadata does is evidence authorship, carry your licence terms, and give an honest person

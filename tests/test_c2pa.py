@@ -7,7 +7,7 @@ import subprocess
 import pytest
 from PIL import Image
 
-from snitch import core, sign
+from snitch import __version__, core, sign
 
 C2PATOOL = pytest.mark.skipif(not sign.c2patool(), reason="c2patool is not installed")
 OPENSSL = pytest.mark.skipif(not shutil.which("openssl"), reason="OpenSSL is not installed")
@@ -30,6 +30,12 @@ def test_manifest_does_not_claim_camera_capture_without_user_evidence():
 
     assert action_data(normal)["digitalSourceType"] == sign.DIGITAL_SOURCES["digital"]
     assert action_data(generated)["digitalSourceType"] == sign.GENERATED
+    assert action_data(normal)["softwareAgent"] == {
+        "name": "snitch", "version": __version__,
+    }
+    assert normal["claim_generator_info"] == [{
+        "name": "snitch", "version": __version__,
+    }]
 
 
 def test_c2pa_report_distinguishes_unavailable_absent_and_errors(monkeypatch):
