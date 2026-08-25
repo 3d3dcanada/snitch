@@ -10,6 +10,7 @@ have forgotten which flag of which subcommand read GPS.
 """
 
 import argparse
+import math
 import os
 import shutil
 import sys
@@ -58,10 +59,13 @@ def _same_file(a, b):
         return os.path.normcase(os.path.abspath(a)) == os.path.normcase(os.path.abspath(b))
 
 
-def _temporary_sibling(path):
+def _temporary_sibling(path, keep_extension=False):
     directory = os.path.dirname(os.path.abspath(path))
-    prefix = f".{os.path.basename(path)}.snitch-"
-    fd, temporary = tempfile.mkstemp(prefix=prefix, suffix=".tmp", dir=directory)
+    basename = os.path.basename(path)
+    stem, extension = os.path.splitext(basename)
+    prefix = f".{stem if keep_extension else basename}.snitch-"
+    suffix = extension if keep_extension else ".tmp"
+    fd, temporary = tempfile.mkstemp(prefix=prefix, suffix=suffix, dir=directory)
     os.close(fd)
     return temporary
 
@@ -302,15 +306,53 @@ def credit_main(argv=None):
     s.add_argument("--generated", action="store_true",
                    help="declare a generative model made this, not a camera")
 
-    p.add_argument("--in-place", action="store_true")
-    p.add_argument("-o", "--out")
+    destination = p.add_mutually_exclusive_group()
+    destination.add_argument("--in-place", action="store_true",
+                             help="atomically replace each input file")
+    destination.add_argument("-o", "--out",
+                             help="output file, or an existing directory for multiple inputs")
+    p.add_argument("--force", action="store_true", help="replace an existing output file")
     a = p.parse_args(argv)
     if not a.files:
         p.print_help()
         return 2
 
+    metadata_requested = any((a.creator, a.credit, a.copyright, a.licence, a.terms,
+                              a.rights_url, a.url, a.contact, a.title, a.description,
+                              a.keyword))
+    stamp_requested = bool(a.stamp or a.logo)
+    modifying_options = metadata_requested or stamp_requested or a.sign or a.generated
+    if a.verify and (modifying_options or a.in_place or a.out or a.force or a.keep_gps
+                     or a.key or a.cert or a.stamp_sub or a.font):
+        p.error("--verify cannot be combined with writing, stamping, or output options")
+    if not a.verify and not (metadata_requested or stamp_requested or a.sign):
+        p.error("nothing to do; provide credit fields, --stamp/--logo, or --sign")
+    if a.generated and not a.sign:
+        p.error("--generated only applies with --sign")
+    if (a.key or a.cert) and not a.sign:
+        p.error("--key and --cert only apply with --sign")
+    if a.stamp_sub and not stamp_requested:
+        p.error("--stamp-sub requires --stamp or --logo")
+    if a.logo and not os.path.isfile(a.logo):
+        p.error(f"logo not found: {a.logo}")
+    if a.font and not os.path.isfile(a.font):
+        p.error(f"font not found: {a.font}")
+    if not math.isfinite(a.scale) or not 0 < a.scale <= 1:
+        p.error("--scale must be greater than 0 and at most 1")
+    if not math.isfinite(a.opacity) or not 0 < a.opacity <= 1:
+        p.error("--opacity must be greater than 0 and at most 1")
+    if not 1 <= a.quality <= 100:
+        p.error("--quality must be between 1 and 100")
+    if a.in_place and a.force:
+        p.error("--force is only meaningful with copied output")
+
     if a.verify:
+        failed = False
         for path in a.files:
+            if not os.path.exists(path):
+                print(f"  {path}: not found", file=sys.stderr)
+                failed = True
+                continue
             c = core.read_c2pa(path)
             if not c:
                 print(f"  {os.path.basename(path)}: no Content Credential")
@@ -320,7 +362,7 @@ def credit_main(argv=None):
             state = c.get("validation_state", "?")
             print(f"  {os.path.basename(path)}  {_c(state, GRN if state == 'Valid' else YEL)}  "
                   f"signed by {sig.get('issuer', '?')}  {man.get('title', '')}")
-        return 0
+        return 1 if failed else 0
 
     lic_name, lic_url = (None, None)
     if a.licence:
@@ -332,31 +374,69 @@ def credit_main(argv=None):
     if terms and a.contact:
         terms = f"{terms} Commercial licensing: contact {a.contact}."
 
+    try:
+        outputs = _output_paths(a.files, a.out, "-credited")
+    except ValueError as e:
+        p.error(str(e))
+
     targets = []
-    for path in a.files:
+    failed = False
+    for path, planned_output in zip(a.files, outputs):
         if not os.path.exists(path):
-            print(f"  {path}: not found")
+            print(f"  {path}: not found", file=sys.stderr)
+            failed = True
             continue
-        target = path
-        if not a.in_place:
-            target = _outpath(path, a.out if len(a.files) == 1 else None, "-credited")
-            shutil.copy2(path, target)
+        if a.in_place and os.path.islink(path):
+            print(f"  {path}: refusing in-place replacement of a symlink", file=sys.stderr)
+            failed = True
+            continue
+        target = path if a.in_place else planned_output
+        if not a.in_place and _same_file(path, target):
+            print(f"  {path}: output is the input; use --in-place", file=sys.stderr)
+            failed = True
+            continue
+        if not a.in_place and os.path.lexists(target) and not a.force:
+            print(f"  {target}: output exists; pass --force to replace it", file=sys.stderr)
+            failed = True
+            continue
 
-        if a.stamp or a.logo:
-            core.stamp(target, target, text=a.stamp or (a.creator or ""),
-                       subtext=a.stamp_sub, logo=a.logo, corner=a.corner,
-                       scale=a.scale, opacity=a.opacity, font=a.font, quality=a.quality)
+        temporary = None
+        try:
+            temporary = _temporary_sibling(target, keep_extension=True)
+            shutil.copy2(path, temporary)
+            if stamp_requested:
+                core.stamp(temporary, temporary, text=a.stamp or (a.creator or ""),
+                           subtext=a.stamp_sub, logo=a.logo, corner=a.corner,
+                           scale=a.scale, opacity=a.opacity, font=a.font, quality=a.quality)
 
-        ok, err = core.write_credit(
-            target, creator=a.creator, credit=a.credit, copyright_=a.copyright,
-            terms=terms, rights_url=a.rights_url or lic_url, licensor=a.credit,
-            licensor_url=a.url, contact=a.contact, title=a.title,
-            description=a.description, keywords=a.keyword, drop_gps=not a.keep_gps)
-        mark = _c("ok", GRN) if ok else _c("FAILED " + err, RED)
+            ok, err = core.write_credit(
+                temporary, creator=a.creator, credit=a.credit, copyright_=a.copyright,
+                terms=terms, rights_url=a.rights_url or lic_url, licensor=a.credit,
+                licensor_url=a.url, contact=a.contact, title=a.title,
+                description=a.description, keywords=a.keyword, drop_gps=not a.keep_gps)
+            if not ok:
+                raise ValueError(err or "ExifTool did not write the requested metadata")
+            os.replace(temporary, target)
+            temporary = None
+        except (OSError, ValueError) as e:
+            print(f"  {os.path.basename(path)}: FAILED {e}", file=sys.stderr)
+            failed = True
+            continue
+        finally:
+            if temporary:
+                try:
+                    os.unlink(temporary)
+                except FileNotFoundError:
+                    pass
+
+        mark = _c("ok", GRN)
         stamped = " + visible stamp" if (a.stamp or a.logo) else ""
         print(f"  {os.path.basename(target)}  credit written{stamped}  {mark}")
-        if a.stamp or a.logo:
-            print(f"    {DIM}stamping re-encoded the image at quality {a.quality}{OFF}")
+        if stamp_requested:
+            if os.path.splitext(target)[1].lower() in (".jpg", ".jpeg"):
+                print(f"    stamping re-encoded the JPEG at quality {a.quality}")
+            else:
+                print("    stamping rewrote the PNG pixel data")
         targets.append(target)
 
     if a.sign and targets:
@@ -365,13 +445,14 @@ def credit_main(argv=None):
                                 contact=a.contact, licence=a.licence, title=a.title,
                                 description=a.description, key=a.key, cert=a.cert,
                                 generated=a.generated)
-        signer.run(ns)
+        if signer.run(ns):
+            failed = True
 
-    if not (a.stamp or a.logo):
+    if not stamp_requested:
         print(f"\n  {DIM}Most platforms strip what you just wrote. --stamp puts it in the"
               f" pixels,{OFF}")
         print(f"  {DIM}which is the only layer that always survives. snitch --platforms{OFF}")
-    return 0
+    return 1 if failed else 0
 
 
 def main(argv=None):

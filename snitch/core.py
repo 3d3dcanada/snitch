@@ -366,6 +366,9 @@ def write_credit(path, *, creator=None, credit=None, copyright_=None, terms=None
     def add(*pairs):
         a.extend(pairs)
 
+    writes_iptc = any((creator, credit, copyright_, title, description, keywords))
+    if writes_iptc:
+        add("-IPTC:CodedCharacterSet=UTF8")
     if creator:
         add(f"-XMP-dc:Creator={creator}", f"-IPTC:By-line={creator}", f"-EXIF:Artist={creator}")
     if credit:
@@ -418,6 +421,7 @@ LICENCES = {
 # --------------------------------------------------------------------------------------------
 
 CORNERS = ("bottom-right", "bottom-left", "top-right", "top-left")
+STAMP_EXTENSIONS = (".jpg", ".jpeg", ".png")
 
 
 def stamp(src, dst, *, text, logo=None, corner="bottom-right", scale=0.05, opacity=0.85,
@@ -433,24 +437,36 @@ def stamp(src, dst, *, text, logo=None, corner="bottom-right", scale=0.05, opaci
 
     if corner not in CORNERS:
         raise ValueError(f"corner must be one of {CORNERS}")
+    if not 0 < scale <= 1:
+        raise ValueError("scale must be greater than 0 and at most 1")
+    if not 0 < opacity <= 1:
+        raise ValueError("opacity must be greater than 0 and at most 1")
+    if not 1 <= quality <= 100:
+        raise ValueError("quality must be between 1 and 100")
+    ext = os.path.splitext(dst)[1].lower()
+    if ext not in STAMP_EXTENSIONS:
+        raise ValueError("visible stamping supports JPEG and PNG only")
+    if not text and not logo:
+        raise ValueError("a visible stamp needs text or a logo")
+    if logo and not os.path.isfile(logo):
+        raise ValueError(f"logo not found: {logo}")
 
-    im = Image.open(src).convert("RGBA")
+    with Image.open(src) as source:
+        source_has_alpha = "A" in source.getbands() or "transparency" in source.info
+        im = source.convert("RGBA")
     W, H = im.size
     unit = max(20, int(min(W, H) * scale))
     pad = max(6, int(unit * 0.30))
     text_px = int(unit * 0.50)
     sub_px = int(unit * 0.30)
 
-    try:
-        f_main = ImageFont.truetype(font, text_px) if font else ImageFont.load_default(text_px)
-        f_sub = ImageFont.truetype(font, sub_px) if font else ImageFont.load_default(sub_px)
-    except Exception:
-        f_main = ImageFont.load_default()
-        f_sub = ImageFont.load_default()
+    f_main = ImageFont.truetype(font, text_px) if font else ImageFont.load_default(size=text_px)
+    f_sub = ImageFont.truetype(font, sub_px) if font else ImageFont.load_default(size=sub_px)
 
     logo_im = None
-    if logo and os.path.exists(logo):
-        logo_im = Image.open(logo).convert("RGBA")
+    if logo:
+        with Image.open(logo) as source_logo:
+            logo_im = source_logo.convert("RGBA")
         ratio = unit / max(1, logo_im.height)
         logo_im = logo_im.resize((max(1, int(logo_im.width * ratio)), unit), Image.LANCZOS)
 
@@ -481,14 +497,21 @@ def stamp(src, dst, *, text, logo=None, corner="bottom-right", scale=0.05, opaci
         plate.putalpha(alpha)
 
     inset = max(8, int(min(W, H) * 0.022))
+    available_w = max(1, W - 2 * inset)
+    available_h = max(1, H - 2 * inset)
+    fit = min(1.0, available_w / plate.width, available_h / plate.height)
+    if fit < 1.0:
+        plate = plate.resize((max(1, int(plate.width * fit)),
+                              max(1, int(plate.height * fit))), Image.LANCZOS)
+        plate_w, plate_h = plate.size
     x = W - plate_w - inset if "right" in corner else inset
     y = H - plate_h - inset if "bottom" in corner else inset
     im.alpha_composite(plate, (x, y))
 
-    out = im.convert("RGB")
-    ext = os.path.splitext(dst)[1].lower()
     if ext == ".png":
+        out = im if source_has_alpha else im.convert("RGB")
         out.save(dst, "PNG")
     else:
+        out = im.convert("RGB")
         out.save(dst, "JPEG", quality=quality, subsampling=0)
     return dst
