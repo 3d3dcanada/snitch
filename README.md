@@ -165,7 +165,10 @@ Three things get overclaimed constantly in this space. None of them are true her
 are part of the image data. They survive re-encoding, cropping and resizing by design. The only
 technique that touches them is diffusion regeneration, which repaints the image; the tools that do
 it state they cannot detect whether it worked, and output remains classifiable as having been
-through a removal pipeline. DeepMind reports 99.72% SynthID detection under worst-case transforms.
+through a removal pipeline. A 2025
+[SynthID-Image evaluation](https://arxiv.org/abs/2510.09263) reported 99.72% true-positive
+detection at 0.1% false positives for its external SynthID-O variant at its preferred resolution,
+aggregated across the study's worst transformation settings.
 `no-comment` removes **metadata**, including C2PA manifests. That is all it removes, and all it
 says it removes.
 
