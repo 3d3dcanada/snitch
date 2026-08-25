@@ -470,8 +470,8 @@ def stamp(src, dst, *, text, logo=None, corner="bottom-right", scale=0.05, opaci
     THIS RE-ENCODES. It is the only operation here that costs image quality, and the CLI says so.
     Quality defaults to 94, which is visually lossless for a photograph at normal viewing sizes.
 
-    The visible mark is the only layer that survives a screenshot, and on most platforms it is the
-    only layer that survives at all."""
+    A visible mark survives a screenshot because it is part of the pixels, but platforms may crop,
+    resize, or soften it."""
     from PIL import Image, ImageDraw, ImageFont
 
     if corner not in CORNERS:

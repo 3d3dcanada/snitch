@@ -115,27 +115,33 @@ def _files(sp):
 # ==============================================================================================
 
 def print_platforms(notes=False, check=False):
-    print(f"\n{_c('What each platform does to your metadata', BOLD)}"
-          f"   {_c(f'verified {survival.VERIFIED}', DIM)}\n")
+    print(f"\n{_c('Evidence on platform metadata handling', BOLD)}"
+          f"   {_c(f'researched {survival.RESEARCHED}', DIM)}\n")
+    print("  D documented by platform   C independently corroborated   ? unverified\n")
     width = max(len(p) for p in survival.PLATFORMS) + 2
     head = "".join(f"{lbl:<26}" for _, lbl, _ in survival.LAYERS)
     print(f"  {'':<{width}}{head}")
     for name, layers in survival.PLATFORMS.items():
         row = f"  {name:<{width}}"
         for key, _, _ in survival.LAYERS:
-            verdict = layers.get(key, (survival.UNKNOWN, ""))[0]
-            colour = {survival.KEEP: GRN, survival.STRIP: RED,
-                      survival.PARTIAL: YEL}.get(verdict, DIM)
-            row += _c(f"{survival.SYMBOL[verdict]:<26}", colour)
+            record = layers[key]
+            verdict = record["verdict"]
+            colour = (DIM if record["evidence"] == survival.INFERENCE else
+                      {survival.KEEP: GRN, survival.STRIP: RED,
+                       survival.PARTIAL: YEL, survival.READS: GRN}.get(verdict, DIM))
+            row += _c(f"{survival.display_cell(record):<26}", colour)
         print(row)
     print(f"\n  {_c(survival.one_line_advice(), BOLD)}\n")
     if notes:
         for name, layers in survival.PLATFORMS.items():
             print(f"  {_c(name, BOLD)}")
             for key, lbl, _ in survival.LAYERS:
-                _, note = layers.get(key, (survival.UNKNOWN, "not tested"))
+                record = layers[key]
+                note = record["note"]
                 if note:
-                    print(f"    {lbl:<26} {note}")
+                    print(f"    {lbl:<26} [{record['evidence']}] {note}")
+                    for source in record["sources"]:
+                        print(f"      source: {source['title']} — {source['url']}")
             print()
     else:
         print(f"  {_c('--notes for the detail on every cell', DIM)}")
@@ -152,7 +158,7 @@ def snitch_main(argv=None):
         formatter_class=argparse.RawDescriptionHelpFormatter)
     _files(p)
     p.add_argument("--platforms", action="store_true",
-                   help="what each platform keeps and strips on upload")
+                   help="sourced platform metadata-handling research")
     p.add_argument("--notes", action="store_true", help="detail behind every cell")
     p.add_argument("--check", action="store_true", help="how to verify a row yourself")
     p.add_argument("--json", dest="json_output", action="store_true",
@@ -267,8 +273,8 @@ def nocomment_main(argv=None):
         prog="no-comment",
         description="Strip metadata out of an image. Losslessly: the pixels do not change.",
         epilog="What this does NOT do: in-pixel watermarks such as Google SynthID are part of\n"
-               "the image itself. They survive re-encoding, cropping and resizing by design,\n"
-               "and no tool removes them, including this one.",
+               "the image itself. Metadata stripping does not remove them; attempts to do so\n"
+               "repaint pixels and cannot prove the watermark is gone.",
         formatter_class=argparse.RawDescriptionHelpFormatter)
     _files(p)
     destination = p.add_mutually_exclusive_group()
@@ -319,8 +325,8 @@ def nocomment_main(argv=None):
             proof = _c("  PIXELS CHANGED, this is a bug, please report it", RED)
         print(f"  {os.path.basename(out)}  removed {removed:,} bytes of metadata{proof}")
 
-    print(f"\n  {_c('In-pixel watermarks are not touched by this or any tool.', BOLD)}")
-    print("  SynthID and its relatives live in the image data and survive by design.")
+    print(f"\n  {_c('In-pixel watermarks are not touched by metadata stripping.', BOLD)}")
+    print("  SynthID and its relatives live in image data; removal attempts repaint pixels.")
     return 1 if failed else 0
 
 
@@ -332,9 +338,8 @@ def credit_main(argv=None):
     p = argparse.ArgumentParser(
         prog="credit",
         description="Put your name on your work, in the places that survive.",
-        epilog="Only two layers reliably survive a social platform: the pixels, and a C2PA\n"
-               "manifest on LinkedIn. Use --stamp if credit actually matters.\n"
-               "See:  snitch --platforms",
+        epilog="Pixels are the only broadly portable layer. Platform handling of embedded\n"
+               "metadata varies by route and date; see the sourced snitch --platforms table.",
         formatter_class=argparse.RawDescriptionHelpFormatter)
     _files(p)
     p.add_argument("--creator", help="the person who made it")
@@ -352,7 +357,7 @@ def credit_main(argv=None):
     p.add_argument("--keep-gps", action="store_true",
                    help="keep location data. Off by default, because it doxxes people")
 
-    g = p.add_argument_group("visible stamp, the only layer that survives everything")
+    g = p.add_argument_group("visible stamp; portable but still subject to crop and re-encoding")
     g.add_argument("--stamp", metavar="TEXT", help="burn this text into the pixels")
     g.add_argument("--stamp-sub", metavar="TEXT", help="second line under it")
     g.add_argument("--logo", help="PNG logo for the stamp")
@@ -362,8 +367,8 @@ def credit_main(argv=None):
     g.add_argument("--font", help="path to a .ttf")
     g.add_argument("--quality", type=int, default=94)
 
-    s = p.add_argument_group("C2PA Content Credentials, which LinkedIn displays")
-    s.add_argument("--sign", action="store_true", help="also add a signed Content Credential")
+    s = p.add_argument_group("C2PA Content Credentials; platform and trust support varies")
+    s.add_argument("--sign", action="store_true", help="also add a self-signed Content Credential")
     s.add_argument("--verify", action="store_true", help="only check an existing credential")
     s.add_argument("--key", help="PEM private key, generated on first use if absent")
     s.add_argument("--cert", help="PEM certificate")
@@ -529,8 +534,8 @@ def credit_main(argv=None):
             failed = True
 
     if not stamp_requested:
-        print(f"\n  {_c('Most platforms strip what you just wrote. --stamp puts it in the pixels,', DIM)}")
-        print(f"  {_c('which is the only layer that always survives. snitch --platforms', DIM)}")
+        print(f"\n  {_c('Platform handling varies. --stamp puts credit in the pixels, where it', DIM)}")
+        print(f"  {_c('survives metadata stripping but may still be cropped. snitch --platforms', DIM)}")
     return 1 if failed else 0
 
 

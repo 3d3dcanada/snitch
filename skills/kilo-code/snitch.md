@@ -14,7 +14,7 @@ Install: `pip install snitch-tools` plus ExifTool. Source: https://github.com/3d
 ## Commands
 
     snitch FILE                    what the file is telling people
-    snitch --platforms [--notes]   what each platform keeps and strips
+    snitch --platforms [--notes]   sourced platform handling, with unknowns marked
     no-comment FILE                strip metadata, losslessly
     credit FILE --creator ...      write credit; --stamp the pixels; --sign a C2PA credential
 
@@ -28,12 +28,15 @@ Run `snitch` first and read the result out. Two findings change everything:
 
 ## The rule that decides your advice
 
-**Only two layers reliably survive a social platform: the pixels, and a C2PA manifest on
-LinkedIn.** IPTC and XMP are stripped by LinkedIn, Instagram, X, Reddit and most model repositories.
+**Pixels are the only broadly portable layer, and even they can be cropped or softened.** Platform
+handling of IPTC/XMP and C2PA varies by route. LinkedIn documents C2PA display, but rollout and
+untrusted self-signed handling are not verified here.
 
-1. `credit --stamp` is not optional if credit actually matters. It survives screenshots and reposts.
-2. `credit --sign` matters if LinkedIn is in the plan: it shows a CR badge naming the creator.
-3. IPTC/XMP is worth doing anyway. Google Images reads it for the Licensable badge.
+1. `credit --stamp` is the most portable option. It survives metadata stripping and screenshots,
+   but a crop can still remove it.
+2. `credit --sign --digital-source SOURCE` adds tamper-evident provenance. Do not promise platform
+   display for an untrusted self-signed credential; test the exact upload route.
+3. IPTC/XMP is worth doing. Google Images documents reading specific rights and source fields.
 
 Show the `snitch --platforms` table rather than paraphrasing it.
 
@@ -42,7 +45,8 @@ Show the `snitch --platforms` table rather than paraphrasing it.
     credit shot.jpg \
       --creator "Jane Doe" --credit "Doe Studio" \
       --copyright "(c) 2026 Doe Studio" --licence cc-by-nc \
-      --url https://example.com --stamp "Doe Studio" --logo logo.png --sign
+      --url https://example.com --stamp "Doe Studio" --logo logo.png \
+      --sign --digital-source camera
 
 Licences: cc-by, cc-by-sa, cc-by-nd, cc-by-nc, cc-by-nc-sa, cc-by-nc-nd, cc0, arr.
 `credit` strips GPS by default; keep it only if asked.
@@ -50,8 +54,8 @@ Licences: cc-by, cc-by-sa, cc-by-nd, cc-by-nc, cc-by-nc-sa, cc-by-nc-nd, cc0, ar
 ## Three things never to claim
 
 1. **`no-comment` does not remove invisible watermarks.** It removes metadata including C2PA. In-pixel
-   watermarks like Google SynthID survive re-encoding and cropping by design and no tool removes
-   them.
+   watermarks like Google SynthID live in the image data. Metadata stripping does not touch them;
+   removal attempts repaint pixels and cannot prove the mark is gone.
 2. **A self-signed credential does not prove who signed it.** It is valid and tamper-evident and
    proves the file has not changed. It is not on the C2PA trust list, so strict validators report
    the signer as unknown.

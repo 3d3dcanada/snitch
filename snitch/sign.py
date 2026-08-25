@@ -1,10 +1,9 @@
 """C2PA Content Credentials: signing.
 
-WHY THIS IS WORTH DOING AT ALL. LinkedIn scans every uploaded image for a C2PA manifest and, when
-it finds one, shows a "CR" badge on the image that opens a panel naming the creator and the tool.
-As of 2026 it is the only major network that DISPLAYS inbound credentials rather than only reading
-them to decide whether to apply an AI label. IPTC and XMP, which `credit` writes, are
-stripped by LinkedIn on upload. This is not.
+WHY THIS IS WORTH DOING AT ALL. A C2PA manifest carries tamper-evident provenance in the file.
+LinkedIn documents a gradually deployed icon and metadata panel for inbound C2PA content, and Meta
+and Google document reading some C2PA signals. Their handling varies by product and upload path.
+LinkedIn does not document whether an untrusted self-signed credential from this tool gets its UI.
 
 THE HONEST LIMIT, STATED HERE AND IN THE OUTPUT. A certificate this tool generates for you is
 SELF-SIGNED. That is enough for a valid, readable, tamper-evident manifest, and any validator will

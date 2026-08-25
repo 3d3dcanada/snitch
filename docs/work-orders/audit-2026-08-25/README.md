@@ -10,7 +10,7 @@ uploads to third-party platforms, purchases, or account actions.
 |---|---|---|---|
 | WO-01 Baseline and fixtures | Complete | Clean install succeeds; every command and required edge case is exercised | `evidence/baseline.md` |
 | WO-02 Known weak points | In progress | All 14 items are tested, fixed or explicitly classified, with a pytest suite | `evidence/known-weak-points.md` |
-| WO-03 Platform claims | Pending | Every platform/layer cell has a source classification; inference is visibly unverified | `evidence/platform-table.md` |
+| WO-03 Platform claims | Complete | Every platform/layer cell has a source classification; inference is visibly unverified | `evidence/platform-table.md` |
 | WO-04 Wider audit | Pending | Additional correctness, safety, portability, and honesty defects are investigated | `evidence/wider-audit.md` |
 | WO-05 2026 research | Pending | Comparators, standards changes, creator workflows, and CLI ergonomics are sourced and ranked | `evidence/research.md` |
 | WO-06 Final verification | Pending | Tests/checks and real CLI behavior pass; final five-part report is complete | `evidence/final-verification.md` |
