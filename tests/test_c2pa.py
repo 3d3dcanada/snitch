@@ -187,3 +187,30 @@ def test_credit_verify_exit_status_reflects_credential_validity(
     monkeypatch.setattr(core, "read_c2pa_report", lambda _path: report)
 
     assert cli.credit_main(["--verify", str(source)]) == expected
+
+
+def test_credit_verify_does_not_conflate_valid_integrity_with_trusted_identity(
+    tmp_path, monkeypatch, capsys
+):
+    from snitch import cli
+
+    source = tmp_path / "source.jpg"
+    make_jpeg(source)
+    report = {
+        "validation_state": "Valid",
+        "validation_status": [{"code": "signingCredential.untrusted"}],
+        "active_manifest": "claim",
+        "manifests": {
+            "claim": {
+                "title": "Work",
+                "signature_info": {"issuer": "Self-asserted Studio"},
+            }
+        },
+    }
+    monkeypatch.setattr(core, "read_c2pa_report", lambda _path: ("present", report, ""))
+
+    assert cli.credit_main(["--verify", str(source)]) == 0
+    output = capsys.readouterr().out
+    assert "certificate issuer Self-asserted Studio" in output
+    assert "SIGNER IDENTITY UNTRUSTED" in output
+    assert "signed by" not in output

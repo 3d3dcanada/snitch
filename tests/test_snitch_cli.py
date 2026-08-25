@@ -96,6 +96,30 @@ def test_inspect_marks_detected_manifest_unverified_without_c2patool(tmp_path, m
     assert report["c2pa"] is None
 
 
+def test_human_report_surfaces_untrusted_c2pa_identity(tmp_path, monkeypatch, capsys):
+    source = tmp_path / "signed.jpg"
+    make_jpeg(source)
+    report = core.inspect(source)
+    report["c2pa"] = {
+        "validation_state": "Valid",
+        "validation_status": [{"code": "signingCredential.untrusted"}],
+        "active_manifest": "claim",
+        "manifests": {
+            "claim": {
+                "title": "Work",
+                "signature_info": {"issuer": "Self-asserted Studio"},
+            }
+        },
+    }
+    report["c2pa_status"] = "present"
+    monkeypatch.setattr(core, "inspect", lambda _path: report)
+
+    assert cli.snitch_main([str(source)]) == 0
+    output = capsys.readouterr().out
+    assert "certificate issuer Self-asserted Studio" in output
+    assert "SIGNER IDENTITY UNTRUSTED" in output
+
+
 def test_python_module_entrypoint_and_version_work():
     result = subprocess.run(
         [sys.executable, "-m", "snitch", "--version"], capture_output=True, text=True,

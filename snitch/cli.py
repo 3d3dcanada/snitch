@@ -48,6 +48,14 @@ def _command_path(path):
     return f"-- {shlex.quote(path)}"
 
 
+def _identity_untrusted(c2pa_report):
+    return any(
+        status.get("code") == "signingCredential.untrusted"
+        for status in (c2pa_report.get("validation_status") or [])
+        if isinstance(status, dict)
+    )
+
+
 def _outpath(src, out, suffix):
     if out:
         return out
@@ -248,7 +256,9 @@ def snitch_main(argv=None):
             sig = man.get("signature_info") or {}
             print(f"  C2PA Content Credential  [{c.get('validation_state', '?')}]")
             print(f"    title            {man.get('title', '?')}")
-            print(f"    signed by        {sig.get('issuer', '?')}")
+            print(f"    certificate issuer {sig.get('issuer', '?')}")
+            if _identity_untrusted(c):
+                print(_c("    SIGNER IDENTITY UNTRUSTED (certificate not on validator trust list)", YEL))
             if r["ai"] == "generative":
                 print(_c("    THIS SAYS IT WAS MADE BY A GENERATIVE MODEL", YEL))
             elif r["ai"] == "camera":
@@ -461,7 +471,9 @@ def credit_main(argv=None):
             sig = man.get("signature_info") or {}
             state = c.get("validation_state", "?")
             print(f"  {os.path.basename(path)}  {_c(state, GRN if state == 'Valid' else YEL)}  "
-                  f"signed by {sig.get('issuer', '?')}  {man.get('title', '')}")
+                  f"certificate issuer {sig.get('issuer', '?')}  {man.get('title', '')}")
+            if _identity_untrusted(c):
+                print(_c("    SIGNER IDENTITY UNTRUSTED (certificate not on validator trust list)", YEL))
             if state != "Valid":
                 failed = True
         return 1 if failed else 0
