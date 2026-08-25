@@ -60,12 +60,23 @@ def read_metadata(path):
     """Everything exiftool can see, as a dict."""
     require("exiftool", "reading metadata needs it")
     r = _run(["exiftool", "-j", "-G", "-n", "-a", "-u", path])
-    if r.returncode or not r.stdout.strip():
-        return {}
+    if not r.stdout.strip():
+        error = r.stderr.strip()[:300]
+        raise ValueError(error or "ExifTool could not read this file")
     try:
-        return json.loads(r.stdout)[0]
-    except Exception:
-        return {}
+        reports = json.loads(r.stdout)
+        metadata = reports[0]
+    except (IndexError, TypeError, json.JSONDecodeError) as exc:
+        raise ValueError(f"invalid ExifTool JSON: {exc}") from exc
+    if metadata.get("ExifTool:Error"):
+        raise ValueError(str(metadata["ExifTool:Error"]))
+    if r.returncode:
+        raise ValueError(r.stderr.strip()[:300] or f"ExifTool exited {r.returncode}")
+    mime = metadata.get("File:MIMEType", "")
+    if not str(mime).startswith("image/"):
+        kind = metadata.get("File:FileType", "unknown")
+        raise ValueError(f"not an image (ExifTool identified {kind})")
+    return metadata
 
 
 def read_c2pa(path, c2patool=None):
@@ -168,7 +179,9 @@ def inspect(path, c2patool=None):
 
     return {
         "file": os.path.basename(path),
+        "path": os.path.abspath(path),
         "bytes": os.path.getsize(path),
+        "mime_type": meta.get("File:MIMEType"),
         "camera": camera,
         "gps": gps,
         "credit": credit,

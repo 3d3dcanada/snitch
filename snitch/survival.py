@@ -83,6 +83,26 @@ def summary_for(platform):
     return PLATFORMS.get(platform)
 
 
+def as_dict(include_notes=False, include_check=False):
+    report = {
+        "verified": VERIFIED,
+        "layers": [{"key": key, "label": label, "description": description}
+                   for key, label, description in LAYERS],
+        "platforms": {},
+        "advice": one_line_advice(),
+    }
+    for name, layers in PLATFORMS.items():
+        report["platforms"][name] = {
+            key: {"verdict": layers.get(key, (UNKNOWN, ""))[0],
+                  **({"note": layers.get(key, (UNKNOWN, "not tested"))[1]}
+                     if include_notes else {})}
+            for key, _, _ in LAYERS
+        }
+    if include_check:
+        report["how_to_verify"] = how_to_verify()
+    return report
+
+
 def one_line_advice():
     """The conclusion the table exists to support."""
     return (

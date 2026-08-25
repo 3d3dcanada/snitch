@@ -10,12 +10,15 @@ have forgotten which flag of which subcommand read GPS.
 """
 
 import argparse
+import json
 import math
 import os
+import shlex
 import shutil
 import sys
 import tempfile
 
+from . import __version__
 from . import core, survival
 from .core import LICENCES
 
@@ -27,8 +30,22 @@ YEL = "\033[33m"
 OFF = "\033[0m"
 
 
+def _colour_enabled():
+    if "NO_COLOR" in os.environ or not sys.stdout.isatty():
+        return False
+    if os.name != "nt":
+        return True
+    return bool(os.environ.get("WT_SESSION") or os.environ.get("ANSICON")
+                or os.environ.get("ConEmuANSI") == "ON"
+                or os.environ.get("TERM", "").lower() not in ("", "dumb"))
+
+
 def _c(s, colour):
-    return s if not sys.stdout.isatty() else f"{colour}{s}{OFF}"
+    return f"{colour}{s}{OFF}" if _colour_enabled() else s
+
+
+def _command_path(path):
+    return f"-- {shlex.quote(path)}"
 
 
 def _outpath(src, out, suffix):
@@ -90,6 +107,7 @@ def _strip_atomic(source, target):
 
 def _files(sp):
     sp.add_argument("files", nargs="*", help="image files")
+    sp.add_argument("--version", action="version", version=f"%(prog)s {__version__}")
 
 
 # ==============================================================================================
@@ -98,7 +116,7 @@ def _files(sp):
 
 def print_platforms(notes=False, check=False):
     print(f"\n{_c('What each platform does to your metadata', BOLD)}"
-          f"   {DIM}verified {survival.VERIFIED}{OFF}\n")
+          f"   {_c(f'verified {survival.VERIFIED}', DIM)}\n")
     width = max(len(p) for p in survival.PLATFORMS) + 2
     head = "".join(f"{lbl:<26}" for _, lbl, _ in survival.LAYERS)
     print(f"  {'':<{width}}{head}")
@@ -120,7 +138,7 @@ def print_platforms(notes=False, check=False):
                     print(f"    {lbl:<26} {note}")
             print()
     else:
-        print(f"  {DIM}--notes for the detail on every cell{OFF}")
+        print(f"  {_c('--notes for the detail on every cell', DIM)}")
     if check:
         print("\n" + survival.how_to_verify())
 
@@ -137,18 +155,51 @@ def snitch_main(argv=None):
                    help="what each platform keeps and strips on upload")
     p.add_argument("--notes", action="store_true", help="detail behind every cell")
     p.add_argument("--check", action="store_true", help="how to verify a row yourself")
+    p.add_argument("--json", dest="json_output", action="store_true",
+                   help="emit stable machine-readable JSON")
     a = p.parse_args(argv)
+
+    if a.json_output:
+        result = {}
+        failed = False
+        if a.platforms or not a.files:
+            result["platforms"] = survival.as_dict(a.notes, a.check)
+        if a.files:
+            reports = []
+            for path in a.files:
+                if not os.path.exists(path):
+                    reports.append({"path": os.path.abspath(path), "error": "not found"})
+                    failed = True
+                    continue
+                try:
+                    report = core.inspect(path)
+                except (OSError, ValueError, core.ToolMissing) as exc:
+                    reports.append({"path": os.path.abspath(path), "error": str(exc)})
+                    failed = True
+                    continue
+                reports.append(report)
+                failed = failed or report["c2pa_status"] == "error"
+            result["files"] = reports
+        print(json.dumps(result, ensure_ascii=False, indent=2))
+        return 1 if failed else 0
 
     if a.platforms or not a.files:
         print_platforms(a.notes, a.check)
         if not a.files:
             return 0
 
+    failed = False
     for path in a.files:
         if not os.path.exists(path):
-            print(f"  {path}: not found")
+            print(f"  {path}: not found", file=sys.stderr)
+            failed = True
             continue
-        r = core.inspect(path)
+        try:
+            r = core.inspect(path)
+        except (OSError, ValueError, core.ToolMissing) as exc:
+            print(f"  {path}: {exc}", file=sys.stderr)
+            failed = True
+            continue
         print(f"\n{_c(r['file'], BOLD)}  {r['bytes']:,} bytes")
 
         if r["gps"]:
@@ -156,7 +207,7 @@ def snitch_main(argv=None):
             for k, v in r["gps"].items():
                 print(f"    {k.split(':')[-1]:<16} {v}")
             print(_c("    Anyone who downloads this can see where it was taken.", RED))
-            print(f"    Make it stop:  no-comment {path}")
+            print(f"    Make it stop:  no-comment {_command_path(path)}")
         else:
             print(_c("  no location data", GRN))
 
@@ -170,11 +221,14 @@ def snitch_main(argv=None):
             for k, v in r["credit"].items():
                 if isinstance(v, list):
                     v = ", ".join(str(x) for x in v)
-                print(f"    {k:<16} {str(v)[:90]}")
+                rendered = str(v)
+                if len(rendered) > 90:
+                    rendered = rendered[:89] + "…"
+                print(f"    {k:<16} {rendered}")
         else:
             print(_c("  NO CREDIT AT ALL", YEL))
             print("    Nothing in this file says who made it.")
-            print(f"    Fix it:  credit {path} --creator \"Your Name\"")
+            print(f"    Fix it:  credit --creator \"Your Name\" {_command_path(path)}")
 
         if r["c2pa"]:
             c = r["c2pa"]
@@ -198,9 +252,10 @@ def snitch_main(argv=None):
                 print(_c("  C2PA status unavailable: c2patool is not installed", YEL))
             else:
                 print(_c(f"  C2PA check failed: {r['c2pa_error']}", RED))
+                failed = True
 
-    print(f"\n  {DIM}snitch --platforms   what survives an upload and what does not{OFF}")
-    return 0
+    print(f"\n  {_c('snitch --platforms   what survives an upload and what does not', DIM)}")
+    return 1 if failed else 0
 
 
 # ==============================================================================================
@@ -474,9 +529,8 @@ def credit_main(argv=None):
             failed = True
 
     if not stamp_requested:
-        print(f"\n  {DIM}Most platforms strip what you just wrote. --stamp puts it in the"
-              f" pixels,{OFF}")
-        print(f"  {DIM}which is the only layer that always survives. snitch --platforms{OFF}")
+        print(f"\n  {_c('Most platforms strip what you just wrote. --stamp puts it in the pixels,', DIM)}")
+        print(f"  {_c('which is the only layer that always survives. snitch --platforms', DIM)}")
     return 1 if failed else 0
 
 
