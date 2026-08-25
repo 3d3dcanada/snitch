@@ -15,15 +15,22 @@ and in the CLI output, because a user deserves to know which operation costs the
 """
 
 import io
+import hashlib
 import json
 import os
 import shutil
 import struct
 import subprocess
+import zlib
 
-# JPEG markers that never carry image data. FFD8 start, FFD9 end, FFDA is the scan.
-_JPEG_SKIPPABLE = set(range(0xE0, 0xF0)) | {0xFE}          # APP0..APP15 and COM
-_PNG_REQUIRED = {b"IHDR", b"PLTE", b"IDAT", b"IEND", b"tRNS", b"gAMA", b"cHRM", b"sRGB"}
+# JPEG application markers usually carry metadata, but three are required for faithful interchange:
+# JFIF/JFXX identifies a JFIF stream, ICC_PROFILE controls colour, and Adobe APP14 describes the
+# colour transform used by many CMYK JPEGs. EXIF is replaced with an orientation-only segment below.
+_JPEG_METADATA = set(range(0xE0, 0xF0)) | {0xFE}          # APP0..APP15 and COM
+_PNG_DISPLAY_CHUNKS = {
+    b"PLTE", b"tRNS", b"gAMA", b"cHRM", b"sRGB", b"iCCP", b"cICP", b"mDCv", b"cLLi",
+    b"sBIT", b"pHYs", b"bKGD", b"acTL", b"fcTL", b"fdAT",
+}
 
 
 class ToolMissing(RuntimeError):
@@ -152,42 +159,104 @@ def inspect(path, c2patool=None):
 # --------------------------------------------------------------------------------------------
 
 def strip_jpeg(src, dst):
-    """Drop every APPn and COM segment. Pixels are untouched: this is a byte-level edit."""
+    """Drop private/application metadata while retaining display-critical JPEG segments."""
     with open(src, "rb") as f:
         data = f.read()
     if data[:2] != b"\xff\xd8":
         raise ValueError("not a JPEG")
+
+    orientation_segment = _jpeg_orientation_segment(src)
     out = bytearray(b"\xff\xd8")
     i = 2
-    removed = 0
+    inserted_orientation = False
+    saw_scan = False
     while i < len(data) - 1:
         if data[i] != 0xFF:
-            out += data[i:]
-            break
-        marker = data[i + 1]
-        if marker == 0xDA:                       # start of scan: the rest is image data
-            out += data[i:]
-            break
-        if marker in (0xD8, 0xD9) or 0xD0 <= marker <= 0xD7:
-            out += data[i:i + 2]
-            i += 2
+            raise ValueError("malformed JPEG marker stream")
+        marker_start = i
+        while i < len(data) and data[i] == 0xFF:
+            i += 1
+        if i >= len(data):
+            raise ValueError("truncated JPEG marker")
+        marker = data[i]
+        i += 1
+        if marker == 0x00:
+            raise ValueError("unexpected stuffed byte before JPEG scan")
+        if marker in (0x01, 0xD8, 0xD9) or 0xD0 <= marker <= 0xD7:
+            out += data[marker_start:i]
             continue
-        if i + 4 > len(data):
-            out += data[i:]
+        if i + 2 > len(data):
+            raise ValueError("truncated JPEG segment length")
+        seg_len = struct.unpack(">H", data[i:i + 2])[0]
+        if seg_len < 2:
+            raise ValueError("invalid JPEG segment length")
+        segment_end = i + seg_len
+        if segment_end > len(data):
+            raise ValueError("truncated JPEG segment")
+
+        if marker == 0xDA:                       # start of scan: the rest is image data
+            if orientation_segment and not inserted_orientation:
+                out += orientation_segment
+            if data.find(b"\xff\xd9", segment_end) < 0:
+                raise ValueError("JPEG scan has no end marker")
+            out += data[marker_start:]
+            saw_scan = True
             break
-        seg_len = struct.unpack(">H", data[i + 2:i + 4])[0]
-        if marker in _JPEG_SKIPPABLE:
-            removed += seg_len + 2
-        else:
-            out += data[i:i + 2 + seg_len]
-        i += 2 + seg_len
+
+        payload = data[i + 2:segment_end]
+        keep = marker not in _JPEG_METADATA or _keep_jpeg_application_segment(marker, payload)
+        if orientation_segment and not inserted_orientation and marker != 0xE0:
+            out += orientation_segment
+            inserted_orientation = True
+        if keep:
+            out += data[marker_start:segment_end]
+        i = segment_end
+    if not saw_scan:
+        raise ValueError("JPEG has no image scan")
     with open(dst, "wb") as f:
         f.write(out)
-    return removed
+    return len(data) - len(out)
+
+
+def _keep_jpeg_application_segment(marker, payload):
+    return (
+        (marker == 0xE0 and payload.startswith((b"JFIF\x00", b"JFXX\x00")))
+        or (marker == 0xE2 and payload.startswith(b"ICC_PROFILE\x00"))
+        or (marker == 0xEE and payload.startswith(b"Adobe"))
+    )
+
+
+def _orientation_value(path):
+    try:
+        from PIL import Image
+        with Image.open(path) as image:
+            value = image.getexif().get(274)
+    except Exception:
+        return None
+    return value if value in range(2, 9) else None
+
+
+def _orientation_payload(path):
+    orientation = _orientation_value(path)
+    if orientation is None:
+        return None
+    from PIL import Image
+    exif = Image.Exif()
+    exif[274] = orientation
+    return exif.tobytes()
+
+
+def _jpeg_orientation_segment(path):
+    payload = _orientation_payload(path)
+    if payload is None:
+        return None
+    if len(payload) + 2 > 0xFFFF:
+        raise ValueError("orientation EXIF segment is too large")
+    return b"\xff\xe1" + struct.pack(">H", len(payload) + 2) + payload
 
 
 def strip_png(src, dst):
-    """Keep only the chunks a decoder needs. Everything else, including C2PA's caBX, goes."""
+    """Keep image/display chunks and drop private metadata, including C2PA's caBX chunk."""
     with open(src, "rb") as f:
         data = f.read()
     sig = b"\x89PNG\r\n\x1a\n"
@@ -195,23 +264,60 @@ def strip_png(src, dst):
         raise ValueError("not a PNG")
     out = bytearray(sig)
     i = 8
-    removed = 0
+    saw_header = False
+    saw_end = False
+    inserted_orientation = False
+    orientation_chunk = _png_orientation_chunk(src)
     while i < len(data):
-        if i + 8 > len(data):
-            break
+        if i + 12 > len(data):
+            raise ValueError("truncated PNG chunk")
         length = struct.unpack(">I", data[i:i + 4])[0]
         ctype = data[i + 4:i + 8]
         total = 12 + length
-        if ctype in _PNG_REQUIRED:
+        if i + total > len(data):
+            raise ValueError("truncated PNG chunk payload")
+        payload = data[i + 8:i + 8 + length]
+        expected_crc = struct.unpack(">I", data[i + 8 + length:i + total])[0]
+        actual_crc = zlib.crc32(ctype + payload) & 0xFFFFFFFF
+        if expected_crc != actual_crc:
+            raise ValueError(f"bad PNG CRC in {ctype.decode('ascii', 'replace')} chunk")
+        if not saw_header and ctype != b"IHDR":
+            raise ValueError("PNG does not start with IHDR")
+        if ctype == b"IHDR":
+            if saw_header:
+                raise ValueError("PNG has more than one IHDR chunk")
+            saw_header = True
+        if ctype == b"IDAT" and orientation_chunk and not inserted_orientation:
+            out += orientation_chunk
+            inserted_orientation = True
+        is_critical = 65 <= ctype[0] <= 90
+        if is_critical or ctype in _PNG_DISPLAY_CHUNKS:
             out += data[i:i + total]
-        else:
-            removed += total
         i += total
         if ctype == b"IEND":
+            saw_end = True
             break
+    if not saw_header or not saw_end:
+        raise ValueError("PNG is missing a required terminal chunk")
+    if i != len(data):
+        raise ValueError("PNG has data after IEND")
     with open(dst, "wb") as f:
         f.write(out)
-    return removed
+    return len(data) - len(out)
+
+
+def _png_chunk(ctype, payload):
+    crc = zlib.crc32(ctype + payload) & 0xFFFFFFFF
+    return struct.pack(">I", len(payload)) + ctype + payload + struct.pack(">I", crc)
+
+
+def _png_orientation_chunk(path):
+    payload = _orientation_payload(path)
+    if payload is None:
+        return None
+    if payload.startswith(b"Exif\x00\x00"):
+        payload = payload[6:]
+    return _png_chunk(b"eXIf", payload)
 
 
 def strip(src, dst):
@@ -230,10 +336,20 @@ def pixels_identical(a, b):
         from PIL import Image
     except ImportError:
         return None
-    with Image.open(a) as ia, Image.open(b) as ib:
-        if ia.size != ib.size or ia.mode != ib.mode:
-            return False
-        return ia.tobytes() == ib.tobytes()
+    def pixel_digest(path):
+        digest = hashlib.sha256()
+        with Image.open(path) as image:
+            digest.update(repr((image.size, image.mode, getattr(image, "n_frames", 1))).encode())
+            for frame in range(getattr(image, "n_frames", 1)):
+                image.seek(frame)
+                digest.update(repr((image.size, image.mode)).encode())
+                rows = max(1, (1024 * 1024) // max(1, image.width * len(image.getbands())))
+                for top in range(0, image.height, rows):
+                    digest.update(image.crop((0, top, image.width,
+                                              min(image.height, top + rows))).tobytes())
+        return digest.digest()
+
+    return pixel_digest(a) == pixel_digest(b)
 
 
 # --------------------------------------------------------------------------------------------

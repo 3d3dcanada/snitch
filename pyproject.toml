@@ -20,7 +20,10 @@ classifiers = [
   "Programming Language :: Python :: 3",
   "Topic :: Multimedia :: Graphics",
 ]
-dependencies = ["Pillow>=9.0"]
+dependencies = ["Pillow>=10.1"]
+
+[project.optional-dependencies]
+test = ["pytest>=8.0"]
 
 [project.urls]
 Homepage = "https://3d3d.ca"
@@ -33,3 +36,7 @@ credit = "snitch.cli:credit_main"
 
 [tool.setuptools.packages.find]
 include = ["snitch*"]
+
+[tool.pytest.ini_options]
+addopts = "-ra"
+testpaths = ["tests"]
