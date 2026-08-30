@@ -145,6 +145,10 @@ Signing and full C2PA validation additionally need
 reports C2PA validation as unavailable instead of falsely reporting that no credential exists;
 ExifTool can still detect a C2PA/JUMBF container.
 
+`credit --stamp` needs a system font to draw with. It looks for the usual ones and tells you to
+pass `--font /path/to/font.ttf` if it cannot find any. On a minimal Linux image that usually means
+`sudo apt install fonts-dejavu-core`.
+
 ### Build and test
 
 ```bash
