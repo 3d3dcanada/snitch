@@ -99,6 +99,7 @@ impl From<&str> for Fault {
 }
 
 fn main() -> ExitCode {
+    cli::quiet_on_closed_pipe();
     let argv: Vec<String> = std::env::args().skip(1).collect();
     let mut options: Vec<&str> = OPTIONS.to_vec();
     options.extend_from_slice(&MORE_OPTIONS);

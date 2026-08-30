@@ -388,3 +388,42 @@ fn pixels_differ(a: &Path, b: &Path) -> bool {
     );
     a.as_raw() != b.as_raw()
 }
+
+#[cfg(unix)]
+#[test]
+fn a_closed_pipe_ends_quietly_instead_of_panicking() {
+    // Rust sets SIGPIPE to SIG_IGN, so `snitch --platforms | head` printed four lines and then a
+    // panic message where every other Unix command exits. Found by piping a release binary into
+    // `head`, which is exactly how someone reads a long table.
+    use std::process::{Command, Stdio};
+
+    let mut producer = Command::new(SNITCH)
+        .arg("--platforms")
+        .env("NO_COLOR", "1")
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
+        .expect("spawn snitch");
+    let head = Command::new("head")
+        .args(["-4"])
+        .stdin(Stdio::from(producer.stdout.take().expect("stdout")))
+        .output()
+        .expect("run head");
+    let mut noise = Vec::new();
+    use std::io::Read;
+    producer
+        .stderr
+        .take()
+        .expect("stderr")
+        .read_to_end(&mut noise)
+        .expect("read stderr");
+    let _ = producer.wait();
+
+    assert!(head.status.success());
+    let complaint = String::from_utf8_lossy(&noise);
+    assert!(
+        !complaint.contains("panicked"),
+        "a closed pipe must not panic: {complaint}"
+    );
+    assert!(!complaint.contains("Broken pipe"), "{complaint}");
+}

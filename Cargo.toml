@@ -37,6 +37,14 @@ image = { version = "0.25", default-features = false, features = ["jpeg", "png"]
 flate2 = { version = "1", default-features = false, features = ["rust_backend"] }
 ab_glyph = "0.2"
 
+# One crate, no transitive dependencies, for two lines of unsafe. Rust sets SIGPIPE to SIG_IGN at
+# startup, so `snitch --platforms | head` panics with "failed printing to stdout: Broken pipe"
+# instead of exiting quietly the way every other Unix command does. The alternatives are
+# string-matching a panic message or replacing every print site with a fallible write, and neither
+# is better than this. Found by piping the release archive's binary into `head`.
+[target.'cfg(unix)'.dependencies]
+libc = "0.2"
+
 [lib]
 name = "snitch"
 path = "src/lib.rs"

@@ -339,6 +339,7 @@ dependencies = [
  "ab_glyph",
  "flate2",
  "image",
+ "libc",
  "serde",
  "serde_json",
  "sha2",

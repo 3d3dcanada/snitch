@@ -26,6 +26,7 @@ Then:  no-comment FILE   to make it stop
        credit FILE       to put your name on it instead";
 
 fn main() -> ExitCode {
+    cli::quiet_on_closed_pipe();
     let argv: Vec<String> = std::env::args().skip(1).collect();
     let parsed = match Args::parse(
         argv,

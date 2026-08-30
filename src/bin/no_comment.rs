@@ -28,6 +28,7 @@ const WATERMARK_NOTE: &str = "
   SynthID and its relatives live in image data; removal attempts repaint pixels.";
 
 fn main() -> ExitCode {
+    cli::quiet_on_closed_pipe();
     let argv: Vec<String> = std::env::args().skip(1).collect();
     let parsed = match Args::parse(argv, &["in-place", "force"], &["out", "o"]) {
         Ok(p) => p,

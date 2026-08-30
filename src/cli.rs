@@ -21,6 +21,21 @@ pub const OFF: &str = "\x1b[0m";
 /// constant so no source file in this repository has to contain the character itself.
 const EM_DASH: char = '\u{2014}';
 
+/// Let a closed pipe end the process quietly, the way every other Unix command does.
+///
+/// The Rust runtime sets SIGPIPE to SIG_IGN, so a write to a closed pipe returns an error and
+/// `println!` turns that into a panic. `snitch --platforms | head -4` then prints four lines and a
+/// panic message, where the Python printed four lines and exited 0. Restoring the default
+/// disposition is the whole fix.
+pub fn quiet_on_closed_pipe() {
+    #[cfg(unix)]
+    // SAFETY: setting a signal disposition to SIG_DFL before any thread is spawned. This is the
+    // documented way to undo the runtime's SIG_IGN and is what the standard tools do.
+    unsafe {
+        libc::signal(libc::SIGPIPE, libc::SIG_DFL);
+    }
+}
+
 pub fn colour_enabled() -> bool {
     if std::env::var_os("NO_COLOR").is_some() {
         return false;
