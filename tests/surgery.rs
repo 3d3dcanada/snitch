@@ -191,3 +191,30 @@ fn chunk_names(path: &std::path::Path) -> Vec<String> {
     }
     names
 }
+
+#[test]
+fn a_png_chunk_length_that_cannot_be_a_length_is_refused_by_both_walkers() {
+    // The two chunk walkers used to disagree: read_text bounded `length + 12` and strip did not.
+    // On a 64-bit usize neither can overflow, so the drift was invisible here; on a 32-bit one the
+    // add wraps, the length check passes, and the slice after it panics. Both are bounded now and
+    // this holds them together.
+    let dir = TempDir::new("length");
+    let source = dir.path("bad.png");
+    plain_png(&source, 8, 8);
+    let data = std::fs::read(&source).unwrap();
+    let at = data.len() - 12; // the IEND chunk header
+    let mut broken = data[..at].to_vec();
+    broken.extend_from_slice(&u32::MAX.to_be_bytes());
+    broken.extend_from_slice(b"tEXt");
+    broken.extend_from_slice(b"ab");
+    std::fs::write(&source, &broken).unwrap();
+
+    let err = strip::strip(&source, &dir.path("out.png")).unwrap_err();
+    assert!(
+        err.contains("truncated") || err.contains("not a length"),
+        "{err}"
+    );
+
+    // The reporting path takes the same input without panicking and returns what it could read.
+    let _ = png::read_text(&source);
+}

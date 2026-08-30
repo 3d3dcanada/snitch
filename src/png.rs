@@ -221,7 +221,7 @@ pub fn read_text(path: &Path) -> Vec<TextChunk> {
         let Some(total) = length.checked_add(12) else {
             break;
         };
-        if i + total > data.len() {
+        if total > data.len() - i {
             break;
         }
         if TEXT_CHUNKS.contains(&&ctype) && found.len() < MAX_TEXT_CHUNKS && spent < MAX_TEXT_BUDGET
@@ -275,8 +275,15 @@ pub fn strip(src: &Path, dst: &Path, orientation: Option<&[u8]>) -> Result<u64, 
         }
         let length = be_u32(&data[i..i + 4]) as usize;
         let ctype: [u8; 4] = data[i + 4..i + 8].try_into().expect("four bytes");
-        let total = length + 12;
-        if i + total > data.len() {
+        // Bounded rather than `length + 12`, to match read_text. `length` is a u32 out of the
+        // file: on a 64-bit usize that add cannot overflow, but on a 32-bit one it wraps to a
+        // small number in release, the length check below then passes, and the slice two lines
+        // further down panics. Nothing ships a 32-bit target today, and `cargo install` on an
+        // armv7 or i686 machine builds one.
+        let Some(total) = length.checked_add(12) else {
+            return Err("PNG chunk length is not a length".into());
+        };
+        if total > data.len() - i {
             return Err("truncated PNG chunk payload".into());
         }
         let payload = &data[i + 8..i + 8 + length];
