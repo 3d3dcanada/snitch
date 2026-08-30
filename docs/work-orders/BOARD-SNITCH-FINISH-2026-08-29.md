@@ -1,5 +1,14 @@
 # SNITCH · Board to finished
 
+> **SUPERSEDED IN PART, 2026-08-30.** Ken: *"This needs to be built in Rust, period."* The Python
+> was the wrong language for this machine and nobody, including this board, had said so. Everything
+> below that concerned the Python package is now history: the tool is Rust, at the root of the
+> repository, and the Python is kept verbatim in `legacy/python/` as the specification the port is
+> checked against. What survives unchanged is the web-side work, which was never in this repo, and
+> the truth findings, which the Rust inherits.
+>
+> The port is `docs/RUST-PORT-2026-08-30.md` and pull request #1.
+
 **Opened:** 2026-08-29
 **Author:** Claude, from `docs/AUDIT-CLAUDE-SNITCH-2026-08-29.md`
 **Method:** one WO per sitting, lowest open number first, status row set and evidence pasted before anything is called DONE.

@@ -14,16 +14,14 @@ use snitch::mcp;
 // the guards
 // ----------------------------------------------------------------------------------------------
 
+#[cfg(unix)]
 #[test]
 fn a_symlink_is_refused_rather_than_written_through() {
     let dir = TempDir::new("symlink");
     let real = dir.path("real.jpg");
     let link = dir.path("link.jpg");
     plain_jpeg(&real, 8, 8);
-    #[cfg(unix)]
     std::os::unix::fs::symlink(&real, &link).unwrap();
-    #[cfg(not(unix))]
-    return;
 
     let err = mcp::source_path(link.to_str().unwrap()).unwrap_err();
 
