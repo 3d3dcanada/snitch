@@ -221,7 +221,10 @@ fn run(a: &Args) -> Result<ExitCode, Fault> {
             continue;
         }
         if let Err(e) = one_file(a, source, &target, &credit, stamping) {
-            eprintln!("  {}: {e}", source.display());
+            eprintln!(
+                "  {}: FAILED {e}",
+                source.file_name().unwrap_or_default().to_string_lossy()
+            );
             failed = true;
             continue;
         }

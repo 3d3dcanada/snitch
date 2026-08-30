@@ -23,9 +23,9 @@ options:
 
 In-pixel watermarks are not touched by metadata stripping.";
 
-const WATERMARK_NOTE: &str = "
-  In-pixel watermarks are not touched by metadata stripping.
-  SynthID and its relatives live in image data; removal attempts repaint pixels.";
+const WATERMARK_HEAD: &str = "In-pixel watermarks are not touched by metadata stripping.";
+const WATERMARK_TAIL: &str =
+    "  SynthID and its relatives live in image data; removal attempts repaint pixels.";
 
 fn main() -> ExitCode {
     cli::quiet_on_closed_pipe();
@@ -94,21 +94,19 @@ fn main() -> ExitCode {
         match strip::strip_atomic(source, &target) {
             Ok((removed, identical)) => {
                 let proof = if identical {
-                    "pixels byte-identical"
+                    cli::c("  pixels byte-identical", cli::GRN)
                 } else {
-                    "pixels CHANGED"
+                    cli::c(
+                        "  PIXELS CHANGED, this is a bug, please report it",
+                        cli::RED,
+                    )
                 };
                 let name = if in_place { source } else { &target };
-                if removed == 0 {
-                    println!("  {}  already had nothing to remove", name.display());
-                } else {
-                    println!(
-                        "  {}  removed {} bytes of metadata  {}",
-                        name.display(),
-                        cli::thousands(removed),
-                        cli::c(proof, cli::GRN)
-                    );
-                }
+                println!(
+                    "  {}  removed {} bytes of metadata{proof}",
+                    name.file_name().unwrap_or_default().to_string_lossy(),
+                    cli::thousands(removed),
+                );
             }
             Err(e) => {
                 eprintln!("  {}: {e}", source.display());
@@ -116,7 +114,8 @@ fn main() -> ExitCode {
             }
         }
     }
-    println!("{}", cli::c(WATERMARK_NOTE, cli::DIM));
+    println!("\n  {}", cli::c(WATERMARK_HEAD, cli::BOLD));
+    println!("{WATERMARK_TAIL}");
     if failed {
         ExitCode::FAILURE
     } else {

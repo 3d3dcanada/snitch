@@ -13,11 +13,10 @@ use crate::{exif, jpeg, png};
 /// version of SNITCH handles WebP, HEIC and AVIF as well; this one does not, and no tool
 /// description or README may imply otherwise.
 pub fn strip(src: &Path, dst: &Path) -> Result<u64, String> {
-    let ext = src
-        .extension()
-        .and_then(|e| e.to_str())
-        .unwrap_or("")
-        .to_ascii_lowercase();
+    let ext = match src.extension().and_then(|e| e.to_str()) {
+        Some(e) => format!(".{}", e.to_ascii_lowercase()),
+        None => String::new(),
+    };
     // The orientation is read before the surgery so it can be put back: a rotation the viewer
     // depends on is display, not metadata, even though it lives in the EXIF block.
     let orientation = exif::read_metadata(src)
@@ -27,16 +26,16 @@ pub fn strip(src: &Path, dst: &Path) -> Result<u64, String> {
         .map(exif::orientation_payload);
 
     match ext.as_str() {
-        "jpg" | "jpeg" => {
+        ".jpg" | ".jpeg" => {
             let segment = match orientation.as_deref() {
                 Some(payload) => Some(jpeg::orientation_segment(payload)?),
                 None => None,
             };
             jpeg::strip(src, dst, segment.as_deref())
         }
-        "png" => png::strip(src, dst, orientation.as_deref()),
+        ".png" => png::strip(src, dst, orientation.as_deref()),
         other => Err(format!(
-            ".{other} is not supported for lossless stripping. Only JPEG and PNG."
+            "{other} is not supported for lossless stripping. Only JPEG and PNG."
         )),
     }
 }

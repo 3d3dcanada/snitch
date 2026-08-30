@@ -427,3 +427,42 @@ fn a_closed_pipe_ends_quietly_instead_of_panicking() {
     );
     assert!(!complaint.contains("Broken pipe"), "{complaint}");
 }
+
+#[test]
+fn a_file_with_nothing_to_remove_still_reports_the_pixel_proof() {
+    // This line used to read "already had nothing to remove", which was nicer and dropped the
+    // proof from the one case a reader most wants to see it in. Every fixture the original parity
+    // run used carried metadata, so nothing caught it until a clean file went through.
+    if !have("exiftool") {
+        return;
+    }
+    let dir = TempDir::new("cmd-nothing-to-remove");
+    let source = dir.path("clean.jpg");
+    plain_jpeg(&source, 24, 24);
+
+    let out = run(NO_COMMENT, &[source.to_str().unwrap()]);
+    let text = stdout(&out);
+
+    assert!(out.status.success(), "{}", stderr(&out));
+    assert!(text.contains("removed 0 bytes of metadata"), "{text}");
+    assert!(text.contains("pixels byte-identical"), "{text}");
+}
+
+#[test]
+fn a_file_with_no_extension_at_all_is_refused_without_a_stray_dot() {
+    let dir = TempDir::new("cmd-noext");
+    let named = dir.path("temp.jpg");
+    let source = dir.path("noextension");
+    plain_jpeg(&named, 8, 8);
+    std::fs::rename(&named, &source).expect("rename");
+
+    let out = run(NO_COMMENT, &[source.to_str().unwrap()]);
+    let text = stderr(&out);
+
+    assert_eq!(out.status.code(), Some(1));
+    assert!(
+        text.contains(":  is not supported"),
+        "no phantom extension: {text}"
+    );
+    assert!(!text.contains(". is not supported"), "{text}");
+}
