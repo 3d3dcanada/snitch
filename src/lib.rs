@@ -16,8 +16,8 @@
 //! STAMPING DOES re-encode, because it has to: it changes pixels. That is stated at the call site
 //! and in the CLI output, because a user deserves to know which operation costs them quality.
 //!
-//! HOUSE STYLE. No async, no web framework, no CLI framework, six direct dependencies, and the two
-//! obvious crates for C2PA and MCP were measured and refused. See Cargo.toml for the numbers.
+//! HOUSE STYLE. No async, no web framework, no CLI framework, seven direct dependencies, and the
+//! two obvious crates for C2PA and MCP were measured and refused. See Cargo.toml for the numbers.
 
 pub mod c2pa;
 pub mod cli;

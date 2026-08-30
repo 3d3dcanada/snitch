@@ -13,7 +13,7 @@ keywords = ["metadata", "exif", "c2pa", "provenance", "watermark"]
 categories = ["command-line-utilities", "multimedia::images"]
 exclude = ["/legacy", "/docs", "/skills", "/.github"]
 
-# SIX DIRECT DEPENDENCIES, and the two obvious candidates were measured and refused.
+# SEVEN DIRECT DEPENDENCIES, and the two obvious candidates were measured and refused.
 #
 #   c2pa, the Rust library behind c2patool: 280 crates. c2patool is already a binary this tool
 #   shells out to, exactly as the Python did, so linking the library would multiply the tree by

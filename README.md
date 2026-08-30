@@ -232,13 +232,13 @@ Rust, and deliberately plain Rust.
 
 | | |
 | --- | --- |
-| Source | 4,506 lines, 1,643 more in tests |
-| Direct dependencies | **6** |
-| Whole dependency tree | 46 crates |
+| Source | 4,585 lines, 1,796 more in tests |
+| Direct dependencies | **7** |
+| Whole dependency tree | 47 crates |
 | `async` / `tokio` anywhere in the tree | **0** |
 | All four binaries, stripped | **4.3 MB** |
 | `snitch-mcp` resident, idle | **2.4 MB** |
-| Tests | 68 |
+| Tests | 75 |
 
 There is no async runtime, no web framework and no CLI framework. Arguments are parsed by hand and
 MCP is a blocking read loop over newline-delimited JSON-RPC, because this is a single-operator tool
@@ -251,6 +251,11 @@ Two obvious dependencies were measured and refused, and the numbers are in `Carg
   worth making.
 - **`rmcp`**, the official Rust MCP SDK, is 59 crates and brings tokio. The protocol it implements
   is about two hundred lines against `serde_json`, which was already here.
+
+The seven that earned their place: `serde` and `serde_json` for the JSON contract, `sha2` for the
+pixel proof, `image` with only its jpeg and png features, `flate2` for the PNG text chunks,
+`ab_glyph` to rasterise the stamp text, and `libc` on unix for two lines of `unsafe` that let a
+closed pipe end the process quietly.
 
 ExifTool stays a subprocess for the reason every serious tool in this space keeps it: nothing in
 any language matches its tag database, and a narrower reader would quietly miss fields.
