@@ -43,6 +43,14 @@ pub struct TextChunk {
     pub chunk: String,
     pub keyword: String,
     pub text: String,
+    /// True when the chunk was longer than this tool is willing to hold in memory. Serialised only
+    /// when true, so an ordinary file's report is byte-identical to what it was before the cap.
+    #[serde(skip_serializing_if = "is_false", default)]
+    pub truncated: bool,
+}
+
+fn is_false(b: &bool) -> bool {
+    !*b
 }
 
 impl TextChunk {
@@ -100,10 +108,31 @@ fn be_u32(bytes: &[u8]) -> u32 {
     u32::from_be_bytes([bytes[0], bytes[1], bytes[2], bytes[3]])
 }
 
-fn inflate(data: &[u8]) -> Option<Vec<u8>> {
+/// The most any one text chunk is allowed to inflate to, and the most all of them together are.
+///
+/// MEASURED, NOT GUESSED. A 510 KB PNG carrying one zTXt chunk of compressed zeros drove `snitch`
+/// to 3.6 GB resident and eight seconds of work, because the inflated bytes are then copied for
+/// UTF-8 handling and again for JSON escaping. A 4 MB file holding 200,000 tiny chunks reached
+/// 428 MB. Neither is a legitimate file: the largest real generator payload anyone writes is a
+/// ComfyUI workflow, and those are tens of kilobytes. So both are capped, and a chunk that hits
+/// the cap is reported as truncated rather than silently shortened.
+const MAX_CHUNK_TEXT: usize = 1 << 20; // 1 MB
+const MAX_TEXT_BUDGET: usize = 4 << 20; // 4 MB across the whole file
+const MAX_TEXT_CHUNKS: usize = 256;
+
+/// Inflate, refusing to keep going past `MAX_CHUNK_TEXT`. Returns the bytes and whether it stopped
+/// early, so the caller can say so instead of quietly handing back a shortened prompt.
+fn inflate(data: &[u8]) -> Option<(Vec<u8>, bool)> {
     let mut out = Vec::new();
-    ZlibDecoder::new(data).read_to_end(&mut out).ok()?;
-    Some(out)
+    // take() bounds what is read out of the decoder, so the allocation is bounded too. Reading one
+    // byte past the cap is how we learn there was more, without decompressing all of it.
+    ZlibDecoder::new(data)
+        .take(MAX_CHUNK_TEXT as u64 + 1)
+        .read_to_end(&mut out)
+        .ok()?;
+    let truncated = out.len() > MAX_CHUNK_TEXT;
+    out.truncate(MAX_CHUNK_TEXT);
+    Some((out, truncated))
 }
 
 /// Latin-1 is a byte-for-byte subset of the first 256 code points, which is what tEXt and zTXt are
@@ -118,17 +147,25 @@ fn split_nul(data: &[u8]) -> Option<(&[u8], &[u8])> {
 }
 
 /// Decode one text chunk payload into (keyword, text), or None if it is malformed.
-fn decode_text(ctype: &[u8; 4], payload: &[u8]) -> Option<(String, String)> {
+fn decode_text(ctype: &[u8; 4], payload: &[u8]) -> Option<(String, String, bool)> {
     let (keyword, rest) = split_nul(payload)?;
     let name = latin1(keyword);
     match ctype {
-        b"tEXt" => Some((name, latin1(rest))),
+        b"tEXt" => {
+            let truncated = rest.len() > MAX_CHUNK_TEXT;
+            Some((
+                name,
+                latin1(&rest[..rest.len().min(MAX_CHUNK_TEXT)]),
+                truncated,
+            ))
+        }
         b"zTXt" => {
             // 0 is the only defined compression method.
             if rest.first() != Some(&0) {
                 return None;
             }
-            Some((name, latin1(&inflate(&rest[1..])?)))
+            let (bytes, truncated) = inflate(&rest[1..])?;
+            Some((name, latin1(&bytes), truncated))
         }
         // iTXt: compression flag, compression method, language tag, translated keyword, then text.
         b"iTXt" => {
@@ -138,15 +175,22 @@ fn decode_text(ctype: &[u8; 4], payload: &[u8]) -> Option<(String, String)> {
             let (compressed, method) = (rest[0], rest[1]);
             let (_language, rest) = split_nul(&rest[2..])?;
             let (_translated, text) = split_nul(rest)?;
-            let bytes = if compressed != 0 {
+            let (bytes, truncated) = if compressed != 0 {
                 if method != 0 {
                     return None;
                 }
                 inflate(text)?
             } else {
-                text.to_vec()
+                (
+                    text[..text.len().min(MAX_CHUNK_TEXT)].to_vec(),
+                    text.len() > MAX_CHUNK_TEXT,
+                )
             };
-            Some((name, String::from_utf8_lossy(&bytes).into_owned()))
+            Some((
+                name,
+                String::from_utf8_lossy(&bytes).into_owned(),
+                truncated,
+            ))
         }
         _ => None,
     }
@@ -169,6 +213,7 @@ pub fn read_text(path: &Path) -> Vec<TextChunk> {
         return Vec::new();
     }
     let mut found = Vec::new();
+    let mut spent = 0usize;
     let mut i = 8usize;
     while i + 12 <= data.len() {
         let length = be_u32(&data[i..i + 4]) as usize;
@@ -179,12 +224,17 @@ pub fn read_text(path: &Path) -> Vec<TextChunk> {
         if i + total > data.len() {
             break;
         }
-        if TEXT_CHUNKS.contains(&&ctype) {
-            if let Some((keyword, text)) = decode_text(&ctype, &data[i + 8..i + 8 + length]) {
+        if TEXT_CHUNKS.contains(&&ctype) && found.len() < MAX_TEXT_CHUNKS && spent < MAX_TEXT_BUDGET
+        {
+            if let Some((keyword, text, truncated)) =
+                decode_text(&ctype, &data[i + 8..i + 8 + length])
+            {
+                spent += text.len();
                 found.push(TextChunk {
                     chunk: String::from_utf8_lossy(&ctype).into_owned(),
                     keyword,
                     text,
+                    truncated,
                 });
             }
         }

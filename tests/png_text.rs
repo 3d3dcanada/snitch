@@ -191,3 +191,80 @@ fn every_generator_keyword_is_lowercase_so_the_match_is_case_insensitive() {
         assert_eq!(keyword, &keyword.to_ascii_lowercase(), "{keyword}");
     }
 }
+
+#[test]
+fn a_chunk_that_inflates_enormously_is_capped_and_says_so() {
+    // A 510 KB file with one zTXt chunk of compressed zeros drove the reader to 3.6 GB before this
+    // cap existed. The cap is not a guess: no legitimate generator payload is anywhere near it.
+    let dir = TempDir::new("bomb");
+    let source = dir.path("bomb.png");
+    plain_png(&source, 8, 8);
+    let mut payload = b"Comment\x00\x00".to_vec();
+    payload.extend_from_slice(&deflate(&vec![0u8; 64 * 1024 * 1024]));
+    insert_chunk(&source, &png::chunk(b"zTXt", &payload));
+
+    let found = png::read_text(&source);
+
+    assert_eq!(found.len(), 1);
+    assert!(
+        found[0].truncated,
+        "a chunk that hit the cap has to admit it"
+    );
+    assert!(
+        found[0].text.len() <= 1 << 20,
+        "held {} bytes",
+        found[0].text.len()
+    );
+}
+
+#[test]
+fn an_uncompressed_chunk_is_capped_the_same_way() {
+    let dir = TempDir::new("bigtext");
+    let source = dir.path("big.png");
+    plain_png(&source, 8, 8);
+    insert_chunk(
+        &source,
+        &png::chunk(b"tEXt", &text_payload("parameters", &"x".repeat(3 << 20))),
+    );
+
+    let found = png::read_text(&source);
+
+    assert!(found[0].truncated);
+    assert!(found[0].text.len() <= 1 << 20);
+    assert!(
+        found[0].is_generator(),
+        "capping must not change what the keyword means"
+    );
+}
+
+#[test]
+fn a_file_stuffed_with_chunks_stops_at_a_bounded_number_of_them() {
+    let dir = TempDir::new("flood");
+    let source = dir.path("flood.png");
+    plain_png(&source, 8, 8);
+    for i in 0..2000 {
+        insert_chunk(
+            &source,
+            &png::chunk(b"tEXt", &text_payload(&format!("k{i}"), "v")),
+        );
+    }
+
+    let found = png::read_text(&source);
+
+    assert_eq!(found.len(), 256, "the cap is 256 and it holds");
+}
+
+#[test]
+fn an_ordinary_chunk_carries_no_truncated_flag_into_the_json() {
+    // The flag is skipped when false, so a normal file's report is byte-identical to what it was
+    // before the cap existed, and the parity harness still passes.
+    let dir = TempDir::new("normal");
+    let source = dir.path("gen.png");
+    generator_png(&source);
+
+    let found = png::read_text(&source);
+    let json = serde_json::to_string(&found[0]).unwrap();
+
+    assert!(!found[0].truncated);
+    assert!(!json.contains("truncated"), "{json}");
+}

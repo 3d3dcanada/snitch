@@ -1,25 +1,31 @@
-# Codex Work Order: Adversarial Engineering Review of the SNITCH Rust Port
+# Codex Work Order: Engineering Review of the SNITCH Rust Port
 
-**Prepared:** 2026-08-30
+**Prepared:** 2026-08-30, revised the same day
 **Subject:** `github.com/3d3dcanada/snitch`, branch `rust-port`, pull request #1
 **Mode:** Review and report. Do not merge, tag, publish, deploy, or push to `main`. You may create
 a branch and commit fixes only if Section 9 tells you to, and only there.
 **Authority:** Ken, 2026-08-30: *"give me a prompt for Codex to go over this and ensure that the
 Rust is built properly."* The port was written by Claude in one session. Nobody else has read it.
 
+**This is a code review of our own software.** The sections below ask you to exercise the file
+parsers with malformed input and to check resource bounds, because this tool's entire job is to
+read image files that came from somewhere else. That is ordinary robustness work on a program we
+own and are about to publish, not work against anybody's system.
+
 ---
 
 ## Copy/paste invocation
 
 ~~~text
-Read /home/wess/snitch/docs/HANDOFF-CODEX-RUST-REVIEW-2026-08-30.md in full, then adversarially
-review the SNITCH Rust port on branch rust-port. Your job is to find what is wrong with it, not to
-agree with it. Every claim in Section 3 is a claim the author made about their own work: reproduce
-each one independently and report the ones that do not hold. Build it, test it, fuzz the parsers,
-read the unsafe block, attack the MCP server, and check the whole thing against
-~/.claude/skills/rust-for-this-machine. Section 4 lists deviations the author already knows about,
-so do not spend the review re-finding those; judge whether each was the right call and find the
-ones they missed. Do not merge, tag, publish or touch main. Save a dated report at
+Read /home/wess/snitch/docs/HANDOFF-CODEX-RUST-REVIEW-2026-08-30.md in full, then perform an
+engineering review of the SNITCH Rust port on branch rust-port. This is our own codebase and the
+author is asking you to check their work, so treat every claim in Section 3 as unproven and
+reproduce it yourself. Build it, run the gates, exercise the file parsers with malformed and
+oversized inputs to confirm the error handling and the memory bounds hold, review the one unsafe
+block, confirm the MCP server handles ill-formed requests without corrupting its output stream,
+and judge the whole thing against the house Rust style at ~/.claude/skills/rust-for-this-machine.
+Section 4 lists deviations the author already knows about; judge whether each was the right call
+rather than re-finding them. Do not merge, tag, publish or modify main. Save a dated report at
 /home/wess/snitch/docs/REVIEW-CODEX-RUST-2026-08-30.md with exact commands, exact output, findings
 by severity, and a verdict.
 ~~~
@@ -157,22 +163,31 @@ Do not spend the review re-finding these. Judge whether each was the right call,
 8. **`rustfmt` is enforced here and is not enforced in `ora-runtime`.** A deliberate divergence from
    the house codebase.
 9. **The survival table is `include_str!`'d JSON with a `SNITCH_SURVIVAL` environment override.**
-   The override reads an arbitrary path. Judge the risk.
+   The override reads a path the user names. Judge whether it earns its place.
+10. **The PNG text caps are new**, added after the author measured a 510 KB file taking the reader to
+    3.6 GB. See Section 5.1. The `truncated` flag is skipped when false so parity is unaffected.
+11. **Two MCP spec nits the author found and left.** A response frame that arrives with an `id` is
+    answered with `method not found` rather than ignored, and a JSON-RPC batch array is silently
+    dropped. Neither crashes anything. Judge whether either is worth fixing.
 
 ---
 
-## 5 · Where to actually attack it
+## 5 · Robustness: the inputs the tests do not cover
 
-This is the part of the review that matters. The tests pass; find what the tests do not cover.
+This is the part of the review that matters. The gates are green; the question is what happens on
+input nobody wrote a test for. Every item below is about a program reading a file or a request that
+came from elsewhere, which is this tool's whole purpose.
 
-### 5.1 The parsers, which take untrusted bytes
+### 5.1 The file parsers
 
-`src/png.rs` and `src/jpeg.rs` walk attacker-controlled files by hand.
+`src/png.rs` and `src/jpeg.rs` walk the container by hand, on files the user did not write.
 
-- **Fuzz them.** `cargo-fuzz` or `afl.rs` against `png::read_text`, `png::strip`, `jpeg::strip` and
+- **Exercise them with randomised and malformed input.** `cargo-fuzz` or `afl.rs` is the
+  convenient way to generate it; the point is coverage of the error paths, against `png::read_text`, `png::strip`, `jpeg::strip` and
   `exif::orientation_payload`. Malformed lengths, lengths that overflow, chunks claiming more bytes
-  than the file has, zero-length chunks, a `zTXt` whose zlib stream is a decompression bomb, an
-  `iTXt` with a compression flag set and no data, nested NULs in keywords, 4 GB length fields.
+  than the file has, zero-length chunks, a `zTXt` whose zlib stream inflates far beyond the
+  file size, an `iTXt` with a compression flag set and no data, nested NULs in keywords, and a 4 GB
+  length field.
 - **`png.rs` has `let total = length + 12;` in `strip`.** `length` comes from the file. Prove
   whether that can overflow on a 32-bit target, and whether the `i + total > data.len()` check that
   follows is reached before any indexing.
@@ -180,48 +195,59 @@ This is the part of the review that matters. The tests pass; find what the tests
   cannot loop forever on a chunk with `length == 0` and a type that is not `IEND`.
 - **`jpeg.rs::strip` scans for `FF D9` with a windows() search over the remaining bytes.** Check the
   cost on a large file and whether a crafted file can make it quadratic.
-- **The zlib inflate in `png.rs::inflate` has no output size limit.** A small `zTXt` chunk can
-  decompress to gigabytes. Establish whether that is reachable and what it costs.
+- **The inflate caps in `png.rs` are new and were added in response to a measured defect. Check
+  them.** `MAX_CHUNK_TEXT` (1 MB), `MAX_TEXT_BUDGET` (4 MB) and `MAX_TEXT_CHUNKS` (256). Before
+  they existed, a 510 KB PNG holding one zTXt chunk of compressed zeros took the reader to 3.6 GB
+  resident. Confirm the caps hold, confirm `truncated` is reported rather than the text silently
+  shortened, and confirm an ordinary file's JSON is unchanged by them. Then decide whether the
+  numbers are right: too low and a legitimate ComfyUI workflow gets clipped, too high and the cap
+  is decorative.
+- **The remaining cost on such a file is ExifTool's, not ours**, and `src/exif.rs::read_metadata`
+  says so with the measurement. Verify that claim independently before accepting it.
 
-### 5.2 The MCP server, which takes untrusted lines
+### 5.2 The MCP server
 
 `src/mcp.rs::serve` is a hand-rolled JSON-RPC loop.
 
-- **`BufRead::lines()` has no length limit.** One line with no newline exhausts memory. Establish
-  whether that matters for a local stdio server whose peer is the host that launched it, and say so
-  either way rather than assuming.
-- Send: an id that is an object, a float, null, a huge integer. A `tools/call` with `arguments` as
+- **`BufRead::lines()` has no length limit.** A 191 MB line costs 393 MB and exits cleanly, measured.
+  The peer is the host that launched the process, so judge whether a bound is worth adding at all
+  and say so either way rather than assuming.
+- Send it ill-formed frames: an id that is an object, a float, null, a huge integer. A `tools/call` with `arguments` as
   an array. A method name of 10 MB. Duplicate ids. A response frame instead of a request. Batched
-  requests, which the spec once allowed. Verify none of it panics and none of it writes anything to
-  stdout that is not a frame.
-- **Prove the stdout purity claim harder than the existing test does.** Make ExifTool fail loudly,
+  requests, which the spec once allowed. None of it may panic, and nothing that is not a
+  response frame may reach stdout. The author checked these and found no crash; two spec nits
+  remain, listed in Section 4.
+- **Test the stdout purity claim harder than the existing test does.** Make ExifTool fail loudly,
   make c2patool fail loudly, and confirm neither reaches the wire.
 - Check `initialize` is not required before `tools/call` and decide whether that is a defect.
 
-### 5.3 The filesystem paths, which are where real damage lives
+### 5.3 The filesystem paths, where a mistake costs someone a file
 
-- `strip::temporary_sibling` loops `0..4096` with `create_new(true)`. Race-check it.
+- `strip::temporary_sibling` loops `0..4096` with `create_new(true)`. Check it under concurrency.
 - `strip::strip_atomic` renames across the same directory. Prove nothing partial can appear at the
   target, including when the process is killed mid-write, and when the target directory is
   read-only, full, or on a different filesystem from the source.
 - `strip::copy_permissions` uses `fs::metadata`, which follows symlinks. Establish whether that
   matters here.
-- `mcp::source_path` refuses symlinks. Check the parent directories: a path through a symlinked
-  directory is not refused. Decide whether it should be.
+- `mcp::source_path` refuses a symlinked file. A path through a symlinked *directory* is not
+  refused; the author tested this and it resolves to the real file the user named, which reads as
+  correct. Confirm or contradict that judgement.
 - `credit --in-place` and `no-comment --in-place` replace the user's file. Prove the failure paths
   leave the original intact.
-- Try every command against: a FIFO, a device node, a file the user cannot read, a file that
+- Try every command against, and none of these may hang: a FIFO, a device node, a file the user cannot read, a file that
   disappears between the check and the open, a filename that is invalid UTF-8, a path longer than
   PATH_MAX, a directory named `photo.jpg`.
 
 ### 5.4 The subprocess boundary
 
-Every ExifTool and c2patool call passes user-controlled values.
+Every ExifTool and c2patool call passes values the user typed.
 
-- `exif::Credit::args` builds `-XMP-dc:Creator={value}` strings. A creator name beginning with `-`,
-  containing a newline, or containing `=`. ExifTool has `-@` argfile syntax and `-execute`; prove a
-  crafted field value cannot reach either.
-- `sign::subject_value` escapes `/` and `\` for an OpenSSL subject. Prove that is sufficient.
+- `exif::Credit::args` builds `-XMP-dc:Creator={value}` strings. The author tested a creator name of
+  `-execute`, `-@ /etc/passwd`, `-TagsFromFile=...` and an embedded newline: all four are written as
+  literal tag values because `Command::args` passes each as its own argv entry. **Confirm that
+  independently**, and check the same holds for every other field, for `--keyword` repeated, and for
+  the `--out` and `--logo` paths.
+- `sign::subject_value` escapes `/` and `\` for an OpenSSL subject. Check that is sufficient.
 - Confirm no call inherits stdout, and that `C2PA_PRIVATE_KEY` and `C2PA_SIGN_CERT` are cleared on
   the signing path as `sign.rs` claims.
 

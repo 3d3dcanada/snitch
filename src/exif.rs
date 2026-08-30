@@ -52,6 +52,14 @@ pub fn require(tool: &str, why: &str) -> Result<(), String> {
 /// Everything ExifTool can see, as a map. The flags match the Python exactly: `-j` JSON, `-G`
 /// group prefixes, `-n` numeric values so GPS is a number and not a rendered string, `-a`
 /// duplicate tags, `-u` unknown tags.
+///
+/// THIS CALL IS THE TOOL'S MEMORY CEILING, and it is ExifTool's ceiling rather than ours. A 510 KB
+/// PNG holding one zTXt chunk of compressed zeros costs ExifTool 1.6 GB and three seconds on its
+/// own, measured, and `snitch` on the same file costs the same because everything above this line
+/// is bounded: `png::read_text` handles that file in about 5 MB. Anything that shells out to
+/// ExifTool inherits this, including the Python this was ported from, which cost 6.8 GB for the
+/// same input. Bounding it would mean not asking ExifTool for everything, which changes what the
+/// tool can report, so it is documented here rather than quietly traded away.
 pub fn read_metadata(path: &Path) -> Result<Metadata, String> {
     let path = path
         .canonicalize()
