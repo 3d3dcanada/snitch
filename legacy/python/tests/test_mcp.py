@@ -87,7 +87,9 @@ def test_a_real_client_discovers_every_tool_and_gets_clean_json_back(tmp_path):
     report = payload(inspected)
     assert report["ai"] == "generative"
     assert report["ai_source"] == "png-text-chunk"
-    assert report["c2pa_summary"]["manifest"] == "absent"
+    # `absent` needs c2patool to have run and found nothing. Without it the honest answer is
+    # `unavailable`, and asserting the first made this test pass here and fail in CI.
+    assert report["c2pa_summary"]["manifest"] in ("absent", "unavailable")
 
     assert payload(cleaned)["text"] == "ab"
 

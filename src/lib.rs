@@ -2,9 +2,11 @@
 //!
 //! Three separate jobs that people usually conflate:
 //!
-//!     snitch      read everything and say plainly what is there
-//!     credit      write credit in, and optionally stamp it into the pixels
-//!     no-comment  take metadata out
+//! ```text
+//! snitch      read everything and say plainly what is there
+//! credit      write credit in, and optionally stamp it into the pixels
+//! no-comment  take metadata out
+//! ```
 //!
 //! STRIPPING IS SEGMENT SURGERY, NOT RE-ENCODING. Dropping JPEG APPn/COM markers and keeping only
 //! the required PNG chunks leaves the decoded pixels byte-identical, and `strip::pixels_identical`
