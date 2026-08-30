@@ -7,31 +7,29 @@ on:
 permissions:
   contents: read
 
+env:
+  CARGO_TERM_COLOR: always
+
 jobs:
   test:
-    name: ${{ matrix.os }} / Python ${{ matrix.python }}
+    name: ${{ matrix.os }}
     runs-on: ${{ matrix.os }}
-    timeout-minutes: 20
+    timeout-minutes: 25
     strategy:
       fail-fast: false
       matrix:
-        include:
-          - os: ubuntu-latest
-            python: "3.9"
-          - os: ubuntu-latest
-            python: "3.14"
-          - os: macos-latest
-            python: "3.12"
-          - os: windows-latest
-            python: "3.12"
+        os: [ubuntu-latest, macos-latest, windows-latest]
 
     steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
-        with:
-          python-version: ${{ matrix.python }}
-          cache: pip
+      - uses: actions/checkout@v5
 
+      - name: Install the Rust toolchain
+        run: rustup toolchain install stable --profile minimal --component clippy,rustfmt
+
+      - uses: Swatinem/rust-cache@v2
+
+      # ExifTool is not optional: the tests that read and write real metadata skip without it, and
+      # a green run that silently skipped half the suite is worse than a red one.
       - name: Install ExifTool on Linux
         if: runner.os == 'Linux'
         run: sudo apt-get update && sudo apt-get install --yes libimage-exiftool-perl
@@ -42,24 +40,51 @@ jobs:
         if: runner.os == 'Windows'
         run: choco install exiftool --yes --no-progress
 
-      - name: Install package and development tools
-        run: python -m pip install --upgrade pip ".[dev]"
-      - name: Lint
-        run: ruff check snitch tests
-      - name: Type-check
-        run: mypy snitch
-      - name: Test
-        run: pytest -q
+      # c2patool is what makes the C2PA tests real rather than a set of hand-written manifests.
+      # Building it takes a while, so it runs on Linux only and the tests skip cleanly elsewhere.
+      - name: Install c2patool on Linux
+        if: runner.os == 'Linux'
+        run: cargo install c2patool --locked
 
-      - name: Build and inspect distributions
-        if: runner.os == 'Linux' && matrix.python == '3.14'
+      - name: Format
+        run: cargo fmt --check
+      - name: Lint
+        run: cargo clippy --all-targets -- -D warnings
+      - name: Test
+        run: cargo test --locked
+      - name: Build release
+        run: cargo build --release --locked
+
+      - name: Smoke-test the built binaries
+        shell: bash
         run: |
-          python -m build
-          python -m twine check dist/*
-      - name: Smoke-test the built wheel
-        if: runner.os == 'Linux' && matrix.python == '3.14'
+          set -euo pipefail
+          BIN=target/release
+          "$BIN/snitch" --version
+          "$BIN/no-comment" --version
+          "$BIN/credit" --version
+          "$BIN/snitch-mcp" --version
+          "$BIN/snitch" --platforms | grep -q "researched"
+          # A file with a location in it has to say so, and the strip has to prove the pixels held.
+          "$BIN/snitch" --json --platforms > /dev/null
+          echo "binaries answer"
+
+  legacy-python:
+    # The Python is the specification the Rust is checked against, so it has to keep passing.
+    name: legacy python
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+          cache: pip
+      - run: sudo apt-get update && sudo apt-get install --yes libimage-exiftool-perl
+      - name: Install and test
+        working-directory: legacy/python
         run: |
-          python -m venv /tmp/snitch-wheel-smoke
-          /tmp/snitch-wheel-smoke/bin/python -m pip install dist/*.whl
-          /tmp/snitch-wheel-smoke/bin/snitch --version
-          /tmp/snitch-wheel-smoke/bin/python -m snitch --version
+          python -m pip install --upgrade pip ".[dev]"
+          ruff check snitch tests
+          mypy snitch
+          pytest -q

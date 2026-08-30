@@ -122,8 +122,14 @@ Licence presets: `cc-by`, `cc-by-sa`, `cc-by-nd`, `cc-by-nc`, `cc-by-nc-sa`, `cc
 
 ## Install
 
+Prebuilt binaries for Linux, macOS and Windows are on the
+[releases page](https://github.com/3d3dcanada/snitch/releases). Download, unpack, put the three
+commands on your PATH.
+
+From source, with a Rust toolchain:
+
 ```bash
-pip install snitch-tools
+cargo install --git https://github.com/3d3dcanada/snitch
 ```
 
 Needs [ExifTool](https://exiftool.org):
@@ -131,6 +137,7 @@ Needs [ExifTool](https://exiftool.org):
 ```bash
 sudo apt install libimage-exiftool-perl     # Debian, Ubuntu
 brew install exiftool                       # macOS
+choco install exiftool                      # Windows
 ```
 
 Signing and full C2PA validation additionally need
@@ -138,23 +145,125 @@ Signing and full C2PA validation additionally need
 reports C2PA validation as unavailable instead of falsely reporting that no credential exists;
 ExifTool can still detect a C2PA/JUMBF container.
 
-### Development checks
+### Build and test
 
 ```bash
-python -m pip install -e '.[dev]'
-ruff check snitch tests
-mypy snitch
-pytest -q
-python -m build
-python -m twine check dist/*
+cargo build --release
+cargo test
+cargo clippy --all-targets
+cargo fmt --check
 ```
 
-CI runs those checks on Linux and macOS, exercises the declared Python 3.9 floor and a current
-Python, and also runs the command suite on Windows.
+CI runs those on Linux, macOS and Windows.
 
-### Agent skills
+---
 
-Drop-in skills for Claude Code and Kilo Code are in [`skills/`](skills/). One `cp` each.
+## MCP server
+
+The same tools, exposed to an AI assistant over a local stdio MCP server. It runs on your machine,
+reads your files directly, and makes no network call of any kind.
+
+`snitch-mcp` is installed alongside the other three. There is no `snitch mcp` subcommand, on
+purpose: the name is the interface, and a protocol server is the last thing that should be buried
+inside another command.
+
+| Tool | Does |
+| --- | --- |
+| `snitch_inspect` | Everything a file is saying: GPS, camera, credit, PNG text chunks a generator wrote, C2PA credential |
+| `snitch_strip_metadata` | Lossless strip to a new file, with a per-run decoded-pixel check. JPEG and PNG only |
+| `snitch_add_credit` | Writes IPTC and XMP credit into a copy. Drops GPS unless you ask it not to |
+| `snitch_verify_c2pa` | Presence, asset-binding integrity and signer trust, reported as three separate answers |
+| `snitch_clean_text` | Finds and removes invisible tracking characters. Never touches ZWJ or ZWNJ |
+
+Nothing is edited in place and no tool returns file bytes. A mutation tool returns the output path,
+the byte delta, what class of thing was removed, and the honest state of its proof.
+
+### Setup
+
+Every host below takes the same block. Use the absolute path to `snitch-mcp`, which
+`which snitch-mcp` will tell you.
+
+**Claude Code** ([docs](https://code.claude.com/docs/en/mcp)), in `.mcp.json`:
+
+```json
+{
+  "mcpServers": {
+    "snitch": {
+      "type": "stdio",
+      "command": "/absolute/path/to/snitch-mcp"
+    }
+  }
+}
+```
+
+or in one line:
+
+```bash
+claude mcp add --transport stdio snitch -- /absolute/path/to/snitch-mcp
+```
+
+**Claude Desktop** ([docs](https://modelcontextprotocol.io/docs/develop/connect-local-servers)), in
+`~/Library/Application Support/Claude/claude_desktop_config.json` on macOS or
+`%APPDATA%\Claude\claude_desktop_config.json` on Windows:
+
+```json
+{
+  "mcpServers": {
+    "snitch": {
+      "command": "/absolute/path/to/snitch-mcp"
+    }
+  }
+}
+```
+
+**Cursor** ([docs](https://cursor.com/docs/context/mcp)), in `.cursor/mcp.json` for one project or
+`~/.cursor/mcp.json` for all of them. Same block as Claude Desktop.
+
+**Google Antigravity** ([docs](https://antigravity.google/docs/ide/mcp/)), in
+`~/.gemini/config/mcp_config.json` globally or `.agents/mcp_config.json` in a workspace. Same block
+again. In the IDE: the `…` menu at the top of the agent panel, MCP Servers, Manage MCP Servers,
+View raw config.
+
+---
+
+## How it is built
+
+Rust, and deliberately plain Rust.
+
+| | |
+| --- | --- |
+| Source | 4,506 lines, 1,643 more in tests |
+| Direct dependencies | **6** |
+| Whole dependency tree | 46 crates |
+| `async` / `tokio` anywhere in the tree | **0** |
+| All four binaries, stripped | **4.3 MB** |
+| `snitch-mcp` resident, idle | **2.4 MB** |
+| Tests | 68 |
+
+There is no async runtime, no web framework and no CLI framework. Arguments are parsed by hand and
+MCP is a blocking read loop over newline-delimited JSON-RPC, because this is a single-operator tool
+answering one request at a time over a pipe.
+
+Two obvious dependencies were measured and refused, and the numbers are in `Cargo.toml`:
+
+- **`c2pa`**, the Rust library behind c2patool, is 280 crates. c2patool is that library already
+  compiled, and this shells out to it. Six times the tree to remove one subprocess is not a trade
+  worth making.
+- **`rmcp`**, the official Rust MCP SDK, is 59 crates and brings tokio. The protocol it implements
+  is about two hundred lines against `serde_json`, which was already here.
+
+ExifTool stays a subprocess for the reason every serious tool in this space keeps it: nothing in
+any language matches its tag database, and a narrower reader would quietly miss fields.
+
+### It used to be Python
+
+`legacy/python/` holds the original implementation, kept verbatim rather than deleted. It is the
+specification the port is checked against: `snitch`, `no-comment` and `credit` produce identical
+terminal output, identical JSON, identical exit codes and identical output files across the fixture
+matrix. The platform table in `data/survival.json` was exported from it rather than retyped.
+
+The Python `snitch-mcp` held 66.8 MB resident where this one holds 2.4 MB, measured on the same
+machine in the same state.
 
 ---
 
