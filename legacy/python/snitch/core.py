@@ -14,12 +14,14 @@ STAMPING DOES re-encode, because it has to: it changes pixels. That is stated at
 and in the CLI output, because a user deserves to know which operation costs them quality.
 """
 
+import contextlib
 import hashlib
 import json
 import os
 import shutil
 import struct
 import subprocess
+import tempfile
 import zlib
 
 # JPEG application markers usually carry metadata, but three are required for faithful interchange:
@@ -29,6 +31,26 @@ _JPEG_METADATA = set(range(0xE0, 0xF0)) | {0xFE}          # APP0..APP15 and COM
 _PNG_DISPLAY_CHUNKS = {
     b"PLTE", b"tRNS", b"gAMA", b"cHRM", b"sRGB", b"iCCP", b"cICP", b"mDCv", b"cLLi",
     b"sBIT", b"pHYs", b"bKGD", b"acTL", b"fcTL", b"fdAT",
+}
+
+# The three PNG text chunks. tEXt is a Latin-1 keyword and text separated by a NUL. zTXt adds a
+# compression method byte and deflates the text. iTXt is UTF-8 and carries a compression flag, a
+# language tag and a translated keyword before the text. Generators write into all three, so a
+# reader that only understands tEXt misses most of what is actually in the file.
+_PNG_TEXT_CHUNKS = {b"tEXt", b"zTXt", b"iTXt"}
+
+# Keywords that image generators write. Matching the keyword rather than the text is deliberate:
+# a photograph whose caption happens to mention Stable Diffusion is still a photograph.
+_GENERATOR_KEYWORDS = {
+    "parameters",        # Stable Diffusion WebUI: AUTOMATIC1111, Forge
+    "prompt",            # ComfyUI
+    "workflow",          # ComfyUI
+    "dream",             # early Stable Diffusion
+    "sd-metadata",       # InvokeAI
+    "invokeai_metadata",
+    "invokeai_graph",
+    "aigenerated",
+    "generation_data",
 }
 
 
@@ -83,6 +105,77 @@ def read_metadata(path):
         kind = metadata.get("File:FileType", "unknown")
         raise ValueError(f"not an image (ExifTool identified {kind})")
     return metadata
+
+
+def _png_text_payload(ctype, payload):
+    """Decode one text chunk into (keyword, text), or None if it is malformed."""
+    keyword, sep, rest = payload.partition(b"\x00")
+    if not sep:
+        return None
+    name = keyword.decode("latin-1", "replace")
+    if ctype == b"tEXt":
+        return name, rest.decode("latin-1", "replace")
+    if ctype == b"zTXt":
+        if not rest or rest[0] != 0:              # 0 is the only defined compression method
+            return None
+        try:
+            return name, zlib.decompress(rest[1:]).decode("latin-1", "replace")
+        except zlib.error:
+            return None
+    # iTXt: compression flag, compression method, language tag, translated keyword, then text.
+    if len(rest) < 2:
+        return None
+    compressed, method = rest[0], rest[1]
+    _language, sep, rest = rest[2:].partition(b"\x00")
+    if not sep:
+        return None
+    _translated, sep, text = rest.partition(b"\x00")
+    if not sep:
+        return None
+    if compressed:
+        if method != 0:
+            return None
+        try:
+            text = zlib.decompress(text)
+        except zlib.error:
+            return None
+    return name, text.decode("utf-8", "replace")
+
+
+def read_png_text(path):
+    """Every tEXt, zTXt and iTXt chunk in a PNG, decoded, in file order.
+
+    ExifTool folds these into its PNG group beside IHDR fields, with nothing to distinguish a
+    generator's prompt from an image dimension. Reading the container directly keeps the chunk
+    type, which is the part worth telling someone about.
+
+    Reporting is not surgery: this walker stops at the first inconsistency and returns what it
+    read, so a damaged file still reports what could be recovered. strip_png stays strict, and
+    is the one that refuses.
+    """
+    path = os.path.abspath(os.fspath(path))
+    with open(path, "rb") as f:
+        data = f.read()
+    if data[:8] != b"\x89PNG\r\n\x1a\n":
+        return []
+    found = []
+    i = 8
+    while i + 12 <= len(data):
+        length = struct.unpack(">I", data[i:i + 4])[0]
+        ctype = data[i + 4:i + 8]
+        total = 12 + length
+        if i + total > len(data):
+            break
+        if ctype in _PNG_TEXT_CHUNKS:
+            decoded = _png_text_payload(ctype, data[i + 8:i + 8 + length])
+            if decoded:
+                found.append({"chunk": ctype.decode("ascii"),
+                              "keyword": decoded[0],
+                              "text": decoded[1]})
+        i += total
+        if ctype == b"IEND":
+            break
+    return found
 
 
 def read_c2pa(path, c2patool=None):
@@ -171,7 +264,14 @@ def inspect(path, c2patool=None):
         if v is not None:
             camera[label] = v
 
+    png_text = read_png_text(path)
+    generator_chunks = [c for c in png_text if c["keyword"].lower() in _GENERATOR_KEYWORDS]
+
+    # A C2PA claim is cryptographically bound to the asset. A text chunk is plain text that anyone
+    # can write and that survives being copied around. Both are worth reporting, they are not worth
+    # the same, and the caller is told which one answered so a chunk can never pass for a credential.
     ai = None
+    ai_source = None
     if c2pa:
         active = c2pa.get("active_manifest")
         man = (c2pa.get("manifests") or {}).get(active, {})
@@ -183,6 +283,11 @@ def inspect(path, c2patool=None):
                         ai = "generative"
                     elif "digitalCapture" in src and ai is None:
                         ai = "camera"
+        if ai is not None:
+            ai_source = "c2pa"
+    if ai is None and generator_chunks:
+        ai = "generative"
+        ai_source = "png-text-chunk"
 
     return {
         "file": os.path.basename(path),
@@ -192,10 +297,13 @@ def inspect(path, c2patool=None):
         "camera": camera,
         "gps": gps,
         "credit": credit,
+        "png_text": png_text,
+        "generator_keywords": sorted({c["keyword"] for c in generator_chunks}),
         "c2pa": c2pa,
         "c2pa_status": c2pa_status,
         "c2pa_error": c2pa_error,
         "ai": ai,
+        "ai_source": ai_source,
         "has_any_credit": bool(credit),
     }
 
@@ -374,6 +482,82 @@ def strip(src, dst):
     if ext == ".png":
         return strip_png(src, dst)
     raise ValueError(f"{ext} is not supported for lossless stripping. Only JPEG and PNG.")
+
+
+# ----------------------------------------------------------------------------------------------
+# safe output. Shared by every caller so nobody reimplements the guards more weakly.
+# ----------------------------------------------------------------------------------------------
+
+def outpath(src, out, suffix):
+    if out:
+        return out
+    stem, ext = os.path.splitext(src)
+    return f"{stem}{suffix}{ext}"
+
+
+def same_file(a, b):
+    try:
+        return os.path.samefile(a, b)
+    except (FileNotFoundError, OSError):
+        return os.path.normcase(os.path.abspath(a)) == os.path.normcase(os.path.abspath(b))
+
+
+def temporary_sibling(path, keep_extension=False):
+    directory = os.path.dirname(os.path.abspath(path))
+    basename = os.path.basename(path)
+    stem, extension = os.path.splitext(basename)
+    prefix = f".{stem if keep_extension else basename}.snitch-"
+    suffix = extension if keep_extension else ".tmp"
+    fd, temporary = tempfile.mkstemp(prefix=prefix, suffix=suffix, dir=directory)
+    os.close(fd)
+    return temporary
+
+
+def strip_atomic(source, target):
+    """Strip into a sibling temp file, prove the pixels survived, then move it into place.
+
+    Nothing partial ever appears at the target: either the pixel check passes and the file is
+    replaced in one operation, or the temporary is removed and the target is untouched.
+    """
+    temporary = temporary_sibling(target)
+    try:
+        removed = strip(source, temporary)
+        same = pixels_identical(source, temporary)
+        if same is not True:
+            reason = "pixel comparison unavailable" if same is None else "pixels changed"
+            raise ValueError(f"refusing to write output: {reason}")
+        shutil.copystat(source, temporary, follow_symlinks=True)
+        os.replace(temporary, target)
+        return removed, same
+    finally:
+        with contextlib.suppress(FileNotFoundError):
+            os.unlink(temporary)
+
+
+# A hash mismatch is the validator saying the bytes it is looking at are not the bytes that were
+# signed. That is a different fact from an untrusted signer, and the two must never be merged:
+# one means the image changed, the other means we cannot say who signed it.
+ALTERED_CODES = {
+    "assertion.dataHash.mismatch",
+    "assertion.bmffHash.mismatch",
+    "assertion.boxesHash.mismatch",
+}
+
+
+def _status_codes(c2pa_report):
+    return {status.get("code")
+            for status in ((c2pa_report or {}).get("validation_status") or [])
+            if isinstance(status, dict)}
+
+
+def asset_altered(c2pa_report):
+    """True when the validator says these pixels are not the ones that were signed."""
+    return bool(_status_codes(c2pa_report) & ALTERED_CODES)
+
+
+def identity_untrusted(c2pa_report):
+    """True when the signing certificate is not on the validator's trust list."""
+    return "signingCredential.untrusted" in _status_codes(c2pa_report)
 
 
 def pixels_identical(a, b):
