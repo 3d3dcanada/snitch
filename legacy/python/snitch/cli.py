@@ -17,7 +17,6 @@ import os
 import shlex
 import shutil
 import sys
-import tempfile
 
 from . import __version__, core, survival
 from .core import LICENCES
@@ -48,19 +47,12 @@ def _command_path(path):
     return f"-- {shlex.quote(path)}"
 
 
-def _identity_untrusted(c2pa_report):
-    return any(
-        status.get("code") == "signingCredential.untrusted"
-        for status in (c2pa_report.get("validation_status") or [])
-        if isinstance(status, dict)
-    )
+# These live in core so the CLI and the MCP server cannot drift apart on what a report means.
+_asset_altered = core.asset_altered
+_identity_untrusted = core.identity_untrusted
 
 
-def _outpath(src, out, suffix):
-    if out:
-        return out
-    stem, ext = os.path.splitext(src)
-    return f"{stem}{suffix}{ext}"
+_outpath = core.outpath
 
 
 def _output_paths(files, out, suffix):
@@ -77,38 +69,13 @@ def _output_paths(files, out, suffix):
     return targets
 
 
-def _same_file(a, b):
-    try:
-        return os.path.samefile(a, b)
-    except (FileNotFoundError, OSError):
-        return os.path.normcase(os.path.abspath(a)) == os.path.normcase(os.path.abspath(b))
+_same_file = core.same_file
 
 
-def _temporary_sibling(path, keep_extension=False):
-    directory = os.path.dirname(os.path.abspath(path))
-    basename = os.path.basename(path)
-    stem, extension = os.path.splitext(basename)
-    prefix = f".{stem if keep_extension else basename}.snitch-"
-    suffix = extension if keep_extension else ".tmp"
-    fd, temporary = tempfile.mkstemp(prefix=prefix, suffix=suffix, dir=directory)
-    os.close(fd)
-    return temporary
+_temporary_sibling = core.temporary_sibling
 
 
-def _strip_atomic(source, target):
-    temporary = _temporary_sibling(target)
-    try:
-        removed = core.strip(source, temporary)
-        same = core.pixels_identical(source, temporary)
-        if same is not True:
-            reason = "pixel comparison unavailable" if same is None else "pixels changed"
-            raise ValueError(f"refusing to write output: {reason}")
-        shutil.copystat(source, temporary, follow_symlinks=True)
-        os.replace(temporary, target)
-        return removed, same
-    finally:
-        with contextlib.suppress(FileNotFoundError):
-            os.unlink(temporary)
+_strip_atomic = core.strip_atomic
 
 
 def _files(sp):
@@ -250,6 +217,19 @@ def snitch_main(argv=None):
             print("    Nothing in this file says who made it.")
             print(f"    Fix it:  credit --creator \"Your Name\" {_command_path(path)}")
 
+        if r["png_text"]:
+            print(_c("  TEXT IS EMBEDDED IN THIS PNG", YEL))
+            for chunk in r["png_text"]:
+                text = " ".join(str(chunk["text"]).split())
+                if len(text) > 84:
+                    text = text[:83] + "…"
+                print(f"    {chunk['keyword'][:16]:<16} {text}")
+            if r["ai_source"] == "png-text-chunk":
+                print(_c("    A GENERATOR WROTE THIS. It names the tool, and usually the whole prompt.",
+                         YEL))
+                print("    This is plain text, not a signed credential. It proves nothing on its own.")
+            print(f"    Take it out:  no-comment {_command_path(path)}")
+
         if r["c2pa"]:
             c = r["c2pa"]
             man = (c.get("manifests") or {}).get(c.get("active_manifest"), {})
@@ -257,9 +237,11 @@ def snitch_main(argv=None):
             print(f"  C2PA Content Credential  [{c.get('validation_state', '?')}]")
             print(f"    title            {man.get('title', '?')}")
             print(f"    certificate issuer {sig.get('issuer', '?')}")
+            if _asset_altered(c):
+                print(_c("    ALTERED AFTER SIGNING: these pixels are not the ones that were signed", RED))
             if _identity_untrusted(c):
                 print(_c("    SIGNER IDENTITY UNTRUSTED (certificate not on validator trust list)", YEL))
-            if r["ai"] == "generative":
+            if r["ai"] == "generative" and r["ai_source"] == "c2pa":
                 print(_c("    THIS SAYS IT WAS MADE BY A GENERATIVE MODEL", YEL))
             elif r["ai"] == "camera":
                 print(_c("    asserts a camera made this, not a model", GRN))
@@ -473,6 +455,8 @@ def credit_main(argv=None):
             state = c.get("validation_state", "?")
             print(f"  {os.path.basename(path)}  {_c(state, GRN if state == 'Valid' else YEL)}  "
                   f"certificate issuer {sig.get('issuer', '?')}  {man.get('title', '')}")
+            if _asset_altered(c):
+                print(_c("    ALTERED AFTER SIGNING: these pixels are not the ones that were signed", RED))
             if _identity_untrusted(c):
                 print(_c("    SIGNER IDENTITY UNTRUSTED (certificate not on validator trust list)", YEL))
             if state != "Valid":

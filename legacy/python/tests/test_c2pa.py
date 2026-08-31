@@ -7,7 +7,7 @@ import subprocess
 import pytest
 from PIL import Image
 
-from snitch import __version__, core, sign
+from snitch import __version__, cli, core, sign
 
 C2PATOOL = pytest.mark.skipif(not sign.c2patool(), reason="c2patool is not installed")
 OPENSSL = pytest.mark.skipif(not shutil.which("openssl"), reason="OpenSSL is not installed")
@@ -155,6 +155,32 @@ def test_real_sign_and_verify_round_trip_without_false_camera_claim(tmp_path):
     issuer = report["c2pa"]["manifests"][active]["signature_info"]["issuer"]
     assert issuer == "Atelier Étoile"
     assert report["ai"] is None
+
+
+@C2PATOOL
+@OPENSSL
+def test_a_tampered_signed_file_is_reported_as_altered_not_merely_invalid(tmp_path):
+    """The validator already knows the pixels changed. Say so, instead of a bare Invalid."""
+    source = tmp_path / "signed.jpg"
+    key = tmp_path / "keys" / "key.pem"
+    cert = tmp_path / "keys" / "cert.pem"
+    make_jpeg(source)
+    assert sign.ensure_cert(key, cert, "Atelier Étoile")
+    manifest = sign.manifest(title="Signed work", digital_source="digital")
+    ok, error = sign.sign_file(source, manifest, str(key), str(cert), sign.c2patool())
+    assert ok, error
+    assert not cli._asset_altered(core.inspect(source)["c2pa"])
+
+    data = bytearray(source.read_bytes())
+    data[len(data) - 200] ^= 0xFF          # deep in the entropy-coded scan, well past the manifest
+    source.write_bytes(bytes(data))
+
+    report = core.inspect(source)
+
+    assert report["c2pa"]["validation_state"] == "Invalid"
+    assert cli._asset_altered(report["c2pa"])
+    codes = {s["code"] for s in report["c2pa"]["validation_status"]}
+    assert "assertion.dataHash.mismatch" in codes
 
 
 def test_sign_run_returns_failure_when_any_file_cannot_be_signed(tmp_path, monkeypatch):

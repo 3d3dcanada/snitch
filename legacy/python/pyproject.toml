@@ -19,12 +19,19 @@ classifiers = [
   "Programming Language :: Python :: 3",
   "Topic :: Multimedia :: Graphics",
 ]
-dependencies = ["Pillow>=10.1"]
+# 10.3 is the first Pillow with a py.typed marker. Below it, `mypy snitch` fails on an
+# otherwise healthy install, so this floor is a type-checking requirement.
+dependencies = ["Pillow>=10.3"]
 
 [project.optional-dependencies]
+# The MCP server is an extra, not a dependency. The official SDK requires Python 3.10+, and the
+# three commands work fine on 3.9, so raising the whole package's floor to gain one optional
+# surface would drop users for nothing. `pip install snitch-tools[mcp]` simply refuses on 3.9.
+mcp = ["mcp>=2.1"]
 test = ["pytest>=8.0"]
 dev = [
   "build>=1.2",
+  "mcp>=2.1; python_version >= '3.10'",
   "mypy>=1.11,<2",
   "pytest>=8.0",
   "ruff>=0.8",
@@ -39,6 +46,7 @@ Source = "https://github.com/3d3dcanada/snitch"
 snitch = "snitch.cli:snitch_main"
 no-comment = "snitch.cli:nocomment_main"
 credit = "snitch.cli:credit_main"
+snitch-mcp = "snitch.mcp:main"
 
 [tool.setuptools.packages.find]
 include = ["snitch*"]
@@ -60,3 +68,11 @@ files = ["snitch"]
 check_untyped_defs = true
 warn_return_any = true
 warn_unused_configs = true
+
+# The MCP SDK's own floor is 3.10 and its source uses match statements, which mypy cannot parse
+# while targeting 3.9. Our code is what is being checked here, and snitch/mcp.py imports the SDK
+# lazily so the module still loads on 3.9 and says what is missing.
+[[tool.mypy.overrides]]
+module = "mcp.*"
+follow_imports = "skip"
+ignore_missing_imports = true

@@ -1,0 +1,4 @@
+# 100 columns, matching the width the Python was written to and the width these comments assume.
+# ora-runtime does not run rustfmt at all; this crate does, so a contributor's editor agrees with
+# the repository instead of fighting it, and CI can say so.
+max_width = 100

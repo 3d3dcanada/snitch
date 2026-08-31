@@ -1,0 +1,292 @@
+{
+ "researched": "2026-08-25",
+ "advice": "Pixels are the only broadly portable layer. LinkedIn documents C2PA display, but rollout and self-signed credential handling are unverified. Test your exact upload path.",
+ "how_to_verify": "Verify a row with the exact account, app, file type, and upload path you use:\n\n  1. credit photo.jpg --creator \"Your Name\" --copyright \"© Your Name\" \\\n       --stamp \"Your Name\" --sign --digital-source camera\n  2. Save `snitch --json photo-credited.jpg` as the before report.\n  3. Upload it to the platform and record whether a provenance/AI label appears.\n  4. Download the highest-quality public derivative; do not use your retained local original.\n  5. Save `snitch --json downloaded.jpg` and compare every layer with the before report.\n\nPlatform behaviour varies by feed/story/ad/message route, client, account, format, and date. A label\nshown by the platform proves ingestion, not that the downloadable derivative kept the metadata.",
+ "legend": {
+  "D": "documented",
+  "C": "corroborated",
+  "?": "unverified inference"
+ },
+ "symbols": {
+  "verdict": {
+   "keeps": "keeps",
+   "strips": "STRIPS",
+   "partial": "partial",
+   "reads": "reads",
+   "unknown": "unknown"
+  },
+  "evidence": {
+   "documented": "D",
+   "corroborated": "C",
+   "inference": "?"
+  }
+ },
+ "layers": [
+  {
+   "key": "visible",
+   "label": "Visible stamp",
+   "description": "Pixels; may be cropped, resized, softened, or screenshotted."
+  },
+  {
+   "key": "c2pa",
+   "label": "C2PA Content Credentials",
+   "description": "Signed provenance manifest and platform UI support."
+  },
+  {
+   "key": "iptc_xmp",
+   "label": "IPTC / XMP",
+   "description": "Creator, credit, copyright, rights, and source fields."
+  },
+  {
+   "key": "exif",
+   "label": "EXIF",
+   "description": "Camera, lens, date, orientation, and GPS."
+  }
+ ],
+ "platforms": {
+  "LinkedIn": {
+   "exif": {
+    "verdict": "unknown",
+    "evidence": "inference",
+    "note": "No current LinkedIn source found for EXIF in the public/downloadable derivative. The previous STRIPS claim was not live-tested.",
+    "sources": []
+   },
+   "iptc_xmp": {
+    "verdict": "unknown",
+    "evidence": "inference",
+    "note": "No current LinkedIn source found for IPTC/XMP credit fields in the public/downloadable derivative. The previous STRIPS claim was not live-tested.",
+    "sources": []
+   },
+   "c2pa": {
+    "verdict": "partial",
+    "evidence": "documented",
+    "note": "LinkedIn documents an icon and metadata panel for uploads containing C2PA data, but says rollout is gradual. It does not document whether this tool's untrusted self-signed credentials qualify or whether a downloaded derivative retains the manifest.",
+    "sources": [
+     {
+      "title": "LinkedIn Help — Content credentials",
+      "url": "https://www.linkedin.com/help/linkedin/answer/a6282984"
+     }
+    ]
+   },
+   "visible": {
+    "verdict": "keeps",
+    "evidence": "inference",
+    "note": "Expected to remain in displayed pixels, subject to cropping and re-encoding. Not upload/download tested in this review.",
+    "sources": []
+   }
+  },
+  "Instagram": {
+   "exif": {
+    "verdict": "unknown",
+    "evidence": "inference",
+    "note": "Meta documents collecting media metadata, but no current source found defines EXIF fields in Instagram's public/downloadable derivative.",
+    "sources": []
+   },
+   "iptc_xmp": {
+    "verdict": "partial",
+    "evidence": "documented",
+    "note": "Meta documents reading IPTC AI-generation signals for labels. That does not establish that creator, copyright, or rights fields survive in a downloadable derivative.",
+    "sources": [
+     {
+      "title": "Meta — Labeling AI-Generated Images on Facebook, Instagram and Threads",
+      "url": "https://about.fb.com/news/2024/02/labeling-ai-generated-images-on-facebook-instagram-and-threads/"
+     }
+    ]
+   },
+   "c2pa": {
+    "verdict": "partial",
+    "evidence": "documented",
+    "note": "Meta documents using C2PA signals to identify and label AI content. It does not document preservation of the manifest in a downloadable Instagram derivative.",
+    "sources": [
+     {
+      "title": "Meta — Labeling AI-Generated Images on Facebook, Instagram and Threads",
+      "url": "https://about.fb.com/news/2024/02/labeling-ai-generated-images-on-facebook-instagram-and-threads/"
+     },
+     {
+      "title": "Meta — How Meta Is Preparing for the 2026 US Midterm Elections",
+      "url": "https://about.fb.com/news/2026/02/meta-prepares-for-2026-us-midterms/"
+     }
+    ]
+   },
+   "visible": {
+    "verdict": "keeps",
+    "evidence": "inference",
+    "note": "Expected to remain in displayed pixels, subject to cropping and re-encoding. Not upload/download tested in this review.",
+    "sources": []
+   }
+  },
+  "Facebook": {
+   "exif": {
+    "verdict": "unknown",
+    "evidence": "inference",
+    "note": "Meta documents collecting media metadata, but no current source found defines EXIF fields in Facebook's public/downloadable derivative.",
+    "sources": []
+   },
+   "iptc_xmp": {
+    "verdict": "partial",
+    "evidence": "documented",
+    "note": "Meta documents reading IPTC AI-generation signals for labels. That does not establish that creator, copyright, or rights fields survive in a downloadable derivative.",
+    "sources": [
+     {
+      "title": "Meta — Labeling AI-Generated Images on Facebook, Instagram and Threads",
+      "url": "https://about.fb.com/news/2024/02/labeling-ai-generated-images-on-facebook-instagram-and-threads/"
+     }
+    ]
+   },
+   "c2pa": {
+    "verdict": "partial",
+    "evidence": "documented",
+    "note": "Meta documents using C2PA signals to identify and label AI content. It does not document preservation of the manifest in a downloadable Facebook derivative.",
+    "sources": [
+     {
+      "title": "Meta — Labeling AI-Generated Images on Facebook, Instagram and Threads",
+      "url": "https://about.fb.com/news/2024/02/labeling-ai-generated-images-on-facebook-instagram-and-threads/"
+     },
+     {
+      "title": "Meta — How Meta Is Preparing for the 2026 US Midterm Elections",
+      "url": "https://about.fb.com/news/2026/02/meta-prepares-for-2026-us-midterms/"
+     }
+    ]
+   },
+   "visible": {
+    "verdict": "keeps",
+    "evidence": "inference",
+    "note": "Expected to remain in displayed pixels, subject to cropping and re-encoding. Not upload/download tested in this review.",
+    "sources": []
+   }
+  },
+  "X / Twitter": {
+   "exif": {
+    "verdict": "strips",
+    "evidence": "documented",
+    "note": "X says it reads EXIF during upload, retains it temporarily for processing, and does not make it available to people viewing the posted photo.",
+    "sources": [
+     {
+      "title": "X Help — How to post photos or GIFs",
+      "url": "https://help.x.com/en/using-x/posting-gifs-and-pictures"
+     }
+    ]
+   },
+   "iptc_xmp": {
+    "verdict": "unknown",
+    "evidence": "inference",
+    "note": "X's current help covers EXIF but not IPTC/XMP credit fields in the served derivative. The previous STRIPS claim was not live-tested.",
+    "sources": []
+   },
+   "c2pa": {
+    "verdict": "unknown",
+    "evidence": "inference",
+    "note": "No current X source or live round trip was found for inbound C2PA manifests.",
+    "sources": []
+   },
+   "visible": {
+    "verdict": "keeps",
+    "evidence": "inference",
+    "note": "Expected to remain in displayed pixels, subject to automatic scaling, cropping, and re-encoding. Not upload/download tested in this review.",
+    "sources": []
+   }
+  },
+  "Reddit": {
+   "exif": {
+    "verdict": "partial",
+    "evidence": "documented",
+    "note": "Reddit says it strips location and personal-information metadata from shared images. It does not say that every EXIF field is removed.",
+    "sources": [
+     {
+      "title": "Reddit — Privacy by design",
+      "url": "https://redditinc.com/privacy"
+     }
+    ]
+   },
+   "iptc_xmp": {
+    "verdict": "unknown",
+    "evidence": "inference",
+    "note": "Reddit's privacy statement is not field-specific enough to prove what happens to IPTC and XMP rights metadata.",
+    "sources": []
+   },
+   "c2pa": {
+    "verdict": "unknown",
+    "evidence": "inference",
+    "note": "No current Reddit source or live round trip was found for C2PA preservation.",
+    "sources": []
+   },
+   "visible": {
+    "verdict": "keeps",
+    "evidence": "inference",
+    "note": "Expected to remain in displayed pixels, subject to cropping and re-encoding. Not upload/download tested in this review.",
+    "sources": []
+   }
+  },
+  "Printables": {
+   "exif": {
+    "verdict": "unknown",
+    "evidence": "inference",
+    "note": "Printables does not document this and no account-based round trip was authorized.",
+    "sources": []
+   },
+   "iptc_xmp": {
+    "verdict": "unknown",
+    "evidence": "inference",
+    "note": "Printables does not document this and no account-based round trip was authorized.",
+    "sources": []
+   },
+   "c2pa": {
+    "verdict": "unknown",
+    "evidence": "inference",
+    "note": "Printables does not document inbound C2PA handling and no live round trip was run.",
+    "sources": []
+   },
+   "visible": {
+    "verdict": "keeps",
+    "evidence": "inference",
+    "note": "Expected to remain in displayed pixels, subject to the site's crop and image pipeline. Not upload/download tested in this review.",
+    "sources": []
+   }
+  },
+  "Google Images": {
+   "exif": {
+    "verdict": "unknown",
+    "evidence": "inference",
+    "note": "Google's supported image-metadata documentation enumerates IPTC rights/source fields, not general camera/GPS EXIF. Google Images crawls a source URL rather than returning an upload derivative.",
+    "sources": [
+     {
+      "title": "Google Search Central — Image metadata in Google Images",
+      "url": "https://developers.google.com/search/docs/appearance/structured-data/image-license-metadata"
+     }
+    ]
+   },
+   "iptc_xmp": {
+    "verdict": "reads",
+    "evidence": "documented",
+    "note": "Google documents extracting specific IPTC creator, credit, copyright, licence, licensor, and digital-source fields from images it crawls. It does not promise to display every field or every eligible result.",
+    "sources": [
+     {
+      "title": "Google Search Central — Image metadata in Google Images",
+      "url": "https://developers.google.com/search/docs/appearance/structured-data/image-license-metadata"
+     },
+     {
+      "title": "Google Search Help — Find Google Image details",
+      "url": "https://support.google.com/websearch/answer/9789430"
+     }
+    ]
+   },
+   "c2pa": {
+    "verdict": "partial",
+    "evidence": "documented",
+    "note": "Google documents using C2PA as one source for how an image was made or edited in image details. Availability and display are conditional; this is not upload survival.",
+    "sources": [
+     {
+      "title": "Google Search Help — Find Google Image details",
+      "url": "https://support.google.com/websearch/answer/9789430"
+     }
+    ]
+   },
+   "visible": {
+    "verdict": "keeps",
+    "evidence": "inference",
+    "note": "Google indexes the source image's pixels, but thumbnails and previews can crop or rescale a small edge stamp. This is not an upload/download path.",
+    "sources": []
+   }
+  }
+ }
+}

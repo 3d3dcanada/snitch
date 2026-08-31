@@ -1,0 +1,75 @@
+[package]
+name = "snitch-tools"
+version = "0.2.0"
+edition = "2024"
+rust-version = "1.85"
+description = "snitch, no-comment and credit: find out what your image is telling people, make it stop, or put your name on it."
+authors = ["Randall Marshall <info@3d3d.ca>"]
+license = "MIT"
+readme = "README.md"
+homepage = "https://3d3d.ca"
+repository = "https://github.com/3d3dcanada/snitch"
+keywords = ["metadata", "exif", "c2pa", "provenance", "watermark"]
+categories = ["command-line-utilities", "multimedia::images"]
+exclude = ["/legacy", "/docs", "/skills", "/.github"]
+
+# SEVEN DIRECT DEPENDENCIES, and the two obvious candidates were measured and refused.
+#
+#   c2pa, the Rust library behind c2patool: 280 crates. c2patool is already a binary this tool
+#   shells out to, exactly as the Python did, so linking the library would multiply the tree by
+#   six to remove one subprocess. Measured 2026-08-30 with `cargo tree`.
+#
+#   rmcp, the official Rust MCP SDK: 59 crates, and it brings tokio. MCP over stdio is
+#   line-delimited JSON-RPC 2.0, which is about 200 lines against serde_json, which is already
+#   here. The house rule is no async runtime and it is not close.
+#
+# flate2 is already inside image via png; it is declared because src/png.rs inflates zTXt and
+# iTXt payloads directly and a transitive dependency is not a contract.
+[dependencies]
+serde = { version = "1", features = ["derive"] }
+# preserve_order costs three transitive crates (indexmap, equivalent, hashbrown) and buys stable
+# key order in every JSON report. That is not cosmetic: `snitch --platforms --check` tells people
+# to save a report, upload the file, save a second report and diff the two, so a map that reorders
+# itself between runs would fill their diff with noise. Measured 43 crates without it, 46 with.
+serde_json = { version = "1", features = ["preserve_order"] }
+sha2 = "0.10"
+image = { version = "0.25", default-features = false, features = ["jpeg", "png"] }
+flate2 = { version = "1", default-features = false, features = ["rust_backend"] }
+ab_glyph = "0.2"
+
+# One crate, no transitive dependencies, for two lines of unsafe. Rust sets SIGPIPE to SIG_IGN at
+# startup, so `snitch --platforms | head` panics with "failed printing to stdout: Broken pipe"
+# instead of exiting quietly the way every other Unix command does. The alternatives are
+# string-matching a panic message or replacing every print site with a fallible write, and neither
+# is better than this. Found by piping the release archive's binary into `head`.
+[target.'cfg(unix)'.dependencies]
+libc = "0.2"
+
+[lib]
+name = "snitch"
+path = "src/lib.rs"
+
+# Four binaries rather than one dispatching on argv[1], which is how ora-runtime does it. The
+# difference is deliberate: this tool's design law is that the name IS the interface, so `snitch`,
+# `no-comment` and `credit` have to be three real commands and not subcommands of one.
+[[bin]]
+name = "snitch"
+path = "src/bin/snitch.rs"
+
+[[bin]]
+name = "no-comment"
+path = "src/bin/no_comment.rs"
+
+[[bin]]
+name = "credit"
+path = "src/bin/credit.rs"
+
+[[bin]]
+name = "snitch-mcp"
+path = "src/bin/snitch_mcp.rs"
+
+[profile.release]
+codegen-units = 1
+lto = "thin"
+opt-level = 3
+strip = true

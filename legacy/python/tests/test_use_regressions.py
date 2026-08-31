@@ -72,7 +72,7 @@ def test_stamp_still_drops_gps_by_default(tmp_path):
 
 
 @EXIFTOOL
-def test_sign_alone_does_not_fail_with_nothing_to_write(tmp_path):
+def test_sign_alone_does_not_fail_with_nothing_to_write(tmp_path, capsys):
     """`credit --sign --keep-gps` asks for no metadata and no GPS drop.
 
     ExifTool then had nothing to do, write_credit correctly said so, and the file was failed
@@ -85,5 +85,13 @@ def test_sign_alone_does_not_fail_with_nothing_to_write(tmp_path):
     if not core.have("c2patool") and not core.have("exiftool"):
         pytest.skip("needs the toolchain")
     rc = cli.credit_main(args)
-    # Without c2patool the run reports a missing dependency rather than "nothing to write".
-    assert rc in (0, 3)
+    # `credit_main` returns 0 or 1; it collapses the signer's exit code into a boolean, so the 3
+    # that `sign.run` produces for a missing c2patool never reaches the caller. Asserting 3 here
+    # made this test impossible to pass on any machine without c2patool, which is every CI runner
+    # this repository has ever had. What the regression is actually about is the REASON: the run
+    # must not die with "nothing to write" before it reaches the signer.
+    assert rc in (0, 1)
+    out = capsys.readouterr()
+    assert "nothing to write" not in (out.out + out.err)
+    if not core.have("c2patool"):
+        assert "c2patool is not installed" in out.out

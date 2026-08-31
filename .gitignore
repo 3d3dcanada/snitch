@@ -1,9 +1,16 @@
+# Rust
+/target/
+
+# The Python that this was ported from, and its build leavings
 __pycache__/
 *.pyc
 build/
 dist/
 *.egg-info/
 .venv/
+
+# Output the tools themselves produce, so a demo run does not end up committed
 *-credited.jpg
 *-stamped.jpg
 *-clean.jpg
+*-clean.png
