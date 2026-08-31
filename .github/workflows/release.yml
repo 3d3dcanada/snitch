@@ -31,7 +31,12 @@ jobs:
             target: aarch64-unknown-linux-gnu
           - os: macos-latest
             target: aarch64-apple-darwin
-          - os: macos-13
+          # The Intel macOS build cross-compiles from the Apple Silicon runner. It used to say
+          # `macos-13`, and when GitHub retired that image the job stopped being scheduled at all:
+          # four targets finished in minutes while this one sat unassigned for 31, holding the
+          # whole release. A queued job with no runner does not fail, it just never starts, which
+          # is a worse failure than a red one.
+          - os: macos-latest
             target: x86_64-apple-darwin
           - os: windows-latest
             target: x86_64-pc-windows-msvc
