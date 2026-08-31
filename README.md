@@ -1,6 +1,15 @@
 # snitch
 
+[![crates.io](https://img.shields.io/crates/v/snitch-tools?logo=rust&label=crates.io)](https://crates.io/crates/snitch-tools)
+[![release](https://img.shields.io/github/v/release/3d3dcanada/snitch?logo=github)](https://github.com/3d3dcanada/snitch/releases/latest)
+[![CI](https://github.com/3d3dcanada/snitch/actions/workflows/quality.yml/badge.svg)](https://github.com/3d3dcanada/snitch/actions/workflows/quality.yml)
+[![MIT](https://img.shields.io/badge/licence-MIT-blue.svg)](LICENSE)
+
 **Your photo is telling on you. Find out what, make it stop, or put your name on it instead.**
+
+Written in Rust. Four binaries totalling 4.3 MB, no runtime to install, and it makes no network
+call of any kind. It was Python until 2026-08-30, and that version is kept in `legacy/python/` as
+the specification this one is checked against.
 
 Three tools. You type the name of the thing you want.
 
@@ -126,7 +135,13 @@ Prebuilt binaries for Linux, macOS and Windows are on the
 [releases page](https://github.com/3d3dcanada/snitch/releases). Download, unpack, put the three
 commands on your PATH.
 
-From source, with a Rust toolchain:
+With a Rust toolchain:
+
+```bash
+cargo install snitch-tools
+```
+
+Or straight from the repository, to get whatever is on `main`:
 
 ```bash
 cargo install --git https://github.com/3d3dcanada/snitch
