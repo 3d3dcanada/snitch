@@ -109,7 +109,10 @@ fn a_truncated_png_reports_what_survived_instead_of_panicking() {
 
 #[test]
 fn inspect_names_the_generator_and_says_the_signal_is_not_a_credential() {
-    if !have("exiftool") {
+    if skipping(
+        "exiftool",
+        "inspect_names_the_generator_and_says_the_signal_is_not_a_credential",
+    ) {
         return;
     }
     let dir = TempDir::new("inspect-gen");
@@ -125,7 +128,10 @@ fn inspect_names_the_generator_and_says_the_signal_is_not_a_credential() {
 
 #[test]
 fn a_caption_mentioning_a_model_is_not_treated_as_generated() {
-    if !have("exiftool") {
+    if skipping(
+        "exiftool",
+        "a_caption_mentioning_a_model_is_not_treated_as_generated",
+    ) {
         return;
     }
     let dir = TempDir::new("caption");
@@ -152,7 +158,7 @@ fn a_caption_mentioning_a_model_is_not_treated_as_generated() {
 
 #[test]
 fn a_clean_png_reports_no_embedded_text() {
-    if !have("exiftool") {
+    if skipping("exiftool", "a_clean_png_reports_no_embedded_text") {
         return;
     }
     let dir = TempDir::new("inspect-clean");
@@ -168,7 +174,10 @@ fn a_clean_png_reports_no_embedded_text() {
 
 #[test]
 fn stripping_removes_the_chunks_without_touching_the_pixels() {
-    if !have("exiftool") {
+    if skipping(
+        "exiftool",
+        "stripping_removes_the_chunks_without_touching_the_pixels",
+    ) {
         return;
     }
     let dir = TempDir::new("strip-gen");

@@ -11,6 +11,21 @@ pub fn have(tool: &str) -> bool {
     snitch::exif::which(tool).is_some()
 }
 
+/// Leave a test early because a tool it needs is not installed, and say so out loud.
+///
+/// A bare `return` looks exactly like a pass. On a machine without ExifTool that turned sixteen
+/// tests into silence while `cargo test` still printed all green, which is worse than a red run:
+/// it says something was checked when nothing was. Call it as `skip_without("exiftool", "name")`
+/// and act on the `bool`.
+#[must_use]
+pub fn skipping(tool: &str, test: &str) -> bool {
+    if have(tool) {
+        return false;
+    }
+    eprintln!("SKIPPED {test}: {tool} is not installed");
+    true
+}
+
 /// A JPEG with nothing in it but pixels.
 pub fn plain_jpeg(path: &Path, w: u32, h: u32) {
     let image: RgbImage =

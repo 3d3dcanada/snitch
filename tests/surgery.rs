@@ -7,7 +7,10 @@ use snitch::{png, strip};
 
 #[test]
 fn stripping_a_jpeg_keeps_jfif_and_icc_and_drops_private_exif() {
-    if !have("exiftool") {
+    if skipping(
+        "exiftool",
+        "stripping_a_jpeg_keeps_jfif_and_icc_and_drops_private_exif",
+    ) {
         return;
     }
     let dir = TempDir::new("jpeg");

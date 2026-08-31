@@ -90,3 +90,12 @@ jobs:
           ruff check snitch tests
           mypy snitch
           pytest -q
+
+      # The Python is the specification, so the comparison against it belongs in CI rather than in
+      # somebody's scratch directory. This is the test that caught three defects the unit tests
+      # could not see, because it compares the two implementations on the same awkward files.
+      - name: Install the Rust toolchain
+        run: rustup toolchain install stable --profile minimal
+      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
+      - name: Parity against the legacy Python
+        run: scripts/verify-parity.sh

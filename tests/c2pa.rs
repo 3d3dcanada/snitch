@@ -171,7 +171,10 @@ fn an_unknown_digital_source_is_refused_by_name() {
 #[test]
 fn a_real_signature_validates_and_a_tampered_one_says_it_was_altered() {
     if !have_c2patool() || !have("openssl") || !have("exiftool") {
-        eprintln!("skipping: needs c2patool, openssl and exiftool");
+        eprintln!(
+            "SKIPPED a_real_signature_validates_and_a_tampered_one_says_it_was_altered: \
+             needs c2patool, openssl and exiftool"
+        );
         return;
     }
     let dir = TempDir::new("sign");

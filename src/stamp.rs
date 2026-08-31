@@ -256,11 +256,11 @@ pub fn stamp(src: &Path, dst: &Path, options: &Options) -> Result<PathBuf, Strin
     let plate_w = pad * 2 + lw + gap + text_w;
     let plate_h = pad * 2 + unit;
     let mut plate = RgbaImage::from_pixel(plate_w.max(1), plate_h.max(1), Rgba([0, 0, 0, 0]));
-    rounded_rect(
-        &mut plate,
-        (plate_h / 4) as i32,
-        Rgba([0, 0, 0, (255.0 * 0.42) as u8]),
-    );
+    // The radius has to fit BOTH dimensions. A quarter of the height alone, on a plate narrower
+    // than twice that, makes the left and right corner centres cross over and the rounding comes
+    // out lopsided. A logo one pixel wide is enough to do it.
+    let radius = (plate_h / 4).min(plate_w / 4) as i32;
+    rounded_rect(&mut plate, radius, Rgba([0, 0, 0, (255.0 * 0.42) as u8]));
 
     if let Some(logo) = &logo_image {
         for (lx, ly, px) in logo.enumerate_pixels() {
@@ -309,7 +309,12 @@ pub fn stamp(src: &Path, dst: &Path, options: &Options) -> Result<PathBuf, Strin
         }
     }
 
-    let inset = ((w.min(h) as f32 * 0.022) as u32).max(8);
+    // The floor of 8 is for ordinary photographs, where 2.2% would be too tight to read. On an
+    // image smaller than 16 pixels it is larger than the image, and the two corners then disagree:
+    // `bottom-right` saturates to 0 and draws, `top-left` places the plate outside the canvas and
+    // draws nothing while still reporting success. Clamping to half the shorter side makes both
+    // corners behave the same way.
+    let inset = ((w.min(h) as f32 * 0.022) as u32).max(8).min(w.min(h) / 2);
     let available_w = w.saturating_sub(2 * inset).max(1);
     let available_h = h.saturating_sub(2 * inset).max(1);
     let fit = 1.0f32

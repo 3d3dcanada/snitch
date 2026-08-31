@@ -205,8 +205,10 @@ fn session(requests: &[Value]) -> (Vec<Value>, String) {
 
 #[test]
 fn a_real_session_answers_every_request_and_writes_nothing_else_to_stdout() {
-    if !have("exiftool") {
-        eprintln!("skipping: needs exiftool");
+    if skipping(
+        "exiftool",
+        "a_real_session_answers_every_request_and_writes_nothing_else_to_stdout",
+    ) {
         return;
     }
     let dir = TempDir::new("session");

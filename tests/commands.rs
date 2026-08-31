@@ -42,7 +42,10 @@ fn every_command_reports_the_same_version() {
 
 #[test]
 fn snitch_names_the_location_and_the_command_that_removes_it() {
-    if !have("exiftool") {
+    if skipping(
+        "exiftool",
+        "snitch_names_the_location_and_the_command_that_removes_it",
+    ) {
         return;
     }
     let dir = TempDir::new("cmd-gps");
@@ -74,7 +77,10 @@ fn snitch_names_the_location_and_the_command_that_removes_it() {
 
 #[test]
 fn an_option_like_filename_is_a_file_and_not_a_flag() {
-    if !have("exiftool") {
+    if skipping(
+        "exiftool",
+        "an_option_like_filename_is_a_file_and_not_a_flag",
+    ) {
         return;
     }
     let dir = TempDir::new("dashes");
@@ -97,7 +103,10 @@ fn an_unknown_flag_is_an_error_and_not_a_filename() {
 
 #[test]
 fn no_comment_strips_to_a_new_file_and_leaves_the_original_alone() {
-    if !have("exiftool") {
+    if skipping(
+        "exiftool",
+        "no_comment_strips_to_a_new_file_and_leaves_the_original_alone",
+    ) {
         return;
     }
     let dir = TempDir::new("cmd-strip");
@@ -127,7 +136,10 @@ fn no_comment_strips_to_a_new_file_and_leaves_the_original_alone() {
 
 #[test]
 fn no_comment_refuses_to_replace_an_existing_output_without_force() {
-    if !have("exiftool") {
+    if skipping(
+        "exiftool",
+        "no_comment_refuses_to_replace_an_existing_output_without_force",
+    ) {
         return;
     }
     let dir = TempDir::new("cmd-force");
@@ -149,7 +161,10 @@ fn no_comment_refuses_to_replace_an_existing_output_without_force() {
 
 #[test]
 fn no_comment_refuses_two_inputs_that_would_write_one_output() {
-    if !have("exiftool") {
+    if skipping(
+        "exiftool",
+        "no_comment_refuses_two_inputs_that_would_write_one_output",
+    ) {
         return;
     }
     let dir = TempDir::new("cmd-collide");
@@ -178,7 +193,10 @@ fn no_comment_refuses_two_inputs_that_would_write_one_output() {
 
 #[test]
 fn credit_writes_the_fields_and_drops_location_by_default() {
-    if !have("exiftool") {
+    if skipping(
+        "exiftool",
+        "credit_writes_the_fields_and_drops_location_by_default",
+    ) {
         return;
     }
     let dir = TempDir::new("cmd-credit");
@@ -222,7 +240,7 @@ fn credit_writes_the_fields_and_drops_location_by_default() {
 
 #[test]
 fn credit_keeps_location_only_when_told_to() {
-    if !have("exiftool") {
+    if skipping("exiftool", "credit_keeps_location_only_when_told_to") {
         return;
     }
     let dir = TempDir::new("cmd-keepgps");
@@ -272,7 +290,10 @@ fn credit_with_nothing_to_write_says_so() {
 
 #[test]
 fn a_stamp_lands_in_the_pixels_and_carries_the_camera_block_across_the_re_encode() {
-    if !have("exiftool") {
+    if skipping(
+        "exiftool",
+        "a_stamp_lands_in_the_pixels_and_carries_the_camera_block_across_the_re_encode",
+    ) {
         return;
     }
     let dir = TempDir::new("cmd-stamp");
@@ -340,7 +361,10 @@ fn the_platform_table_marks_every_unverified_row_as_unverified() {
 
 #[test]
 fn the_json_report_is_stable_enough_to_diff_across_a_round_trip() {
-    if !have("exiftool") {
+    if skipping(
+        "exiftool",
+        "the_json_report_is_stable_enough_to_diff_across_a_round_trip",
+    ) {
         return;
     }
     let dir = TempDir::new("cmd-json");
@@ -397,6 +421,10 @@ fn a_closed_pipe_ends_quietly_instead_of_panicking() {
     // `head`, which is exactly how someone reads a long table.
     use std::process::{Command, Stdio};
 
+    if skipping("head", "a_closed_pipe_ends_quietly_instead_of_panicking") {
+        return;
+    }
+
     let mut producer = Command::new(SNITCH)
         .arg("--platforms")
         .env("NO_COLOR", "1")
@@ -433,7 +461,10 @@ fn a_file_with_nothing_to_remove_still_reports_the_pixel_proof() {
     // This line used to read "already had nothing to remove", which was nicer and dropped the
     // proof from the one case a reader most wants to see it in. Every fixture the original parity
     // run used carried metadata, so nothing caught it until a clean file went through.
-    if !have("exiftool") {
+    if skipping(
+        "exiftool",
+        "a_file_with_nothing_to_remove_still_reports_the_pixel_proof",
+    ) {
         return;
     }
     let dir = TempDir::new("cmd-nothing-to-remove");
@@ -465,4 +496,48 @@ fn a_file_with_no_extension_at_all_is_refused_without_a_stray_dot() {
         "no phantom extension: {text}"
     );
     assert!(!text.contains(". is not supported"), "{text}");
+}
+
+#[test]
+fn a_stamp_on_a_tiny_image_draws_in_every_corner_or_says_it_could_not() {
+    // The inset has a floor of 8 pixels, which is larger than a small image. The two corners then
+    // disagreed: bottom-right saturated to 0 and drew, top-left placed the plate outside the
+    // canvas and drew nothing while still exiting 0. Reporting success and doing nothing is the
+    // one outcome this tool must never produce.
+    if skipping(
+        "exiftool",
+        "a_stamp_on_a_tiny_image_draws_in_every_corner_or_says_it_could_not",
+    ) {
+        return;
+    }
+    let dir = TempDir::new("cmd-tiny-stamp");
+    let source = dir.path("micro.jpg");
+    plain_jpeg(&source, 6, 6);
+
+    for corner in ["top-left", "top-right", "bottom-left", "bottom-right"] {
+        let target = dir.path(&format!("out-{corner}.jpg"));
+        let out = run(
+            CREDIT,
+            &[
+                source.to_str().unwrap(),
+                "--creator",
+                "X",
+                "--stamp",
+                "3D",
+                "--corner",
+                corner,
+                "-o",
+                target.to_str().unwrap(),
+            ],
+        );
+        if !out.status.success() && stderr(&out).contains("no system font") {
+            eprintln!("SKIPPED: no system font for the stamp");
+            return;
+        }
+        assert!(out.status.success(), "{corner}: {}", stderr(&out));
+        assert!(
+            pixels_differ(&source, &target),
+            "{corner}: exited 0 and drew nothing"
+        );
+    }
 }
